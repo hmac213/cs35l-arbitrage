@@ -1,7 +1,7 @@
 """Tests for Kalshi client."""
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from exchange.clients.kalshi_client import KalshiClient
 from exchange.models import Market, OrderBook, MarketMetadata
 from exchange.dome_api import DomeAPIError
@@ -60,11 +60,11 @@ class TestKalshiClient:
         assert client.exchange_name == "kalshi"
         assert client.dome_client is not None
     
-    @patch.object(KalshiClient, 'dome_client')
-    def test_fetch_all_markets_success(self, mock_dome_client, client, sample_market_data):
+    def test_fetch_all_markets_success(self, client, sample_market_data):
         """Test fetching all markets successfully."""
         # Mock the API response
-        mock_dome_client.get_kalshi_markets.return_value = {
+        client.dome_client = Mock()
+        client.dome_client.get_kalshi_markets.return_value = {
             "data": [sample_market_data]
         }
         
@@ -76,27 +76,27 @@ class TestKalshiClient:
         assert markets[0].name == "Test Market"
         assert markets[0].exchange == "kalshi"
     
-    @patch.object(KalshiClient, 'dome_client')
-    def test_fetch_all_markets_empty_list(self, mock_dome_client, client):
+    def test_fetch_all_markets_empty_list(self, client):
         """Test fetching all markets when API returns empty list."""
-        mock_dome_client.get_kalshi_markets.return_value = []
+        client.dome_client = Mock()
+        client.dome_client.get_kalshi_markets.return_value = []
         
         markets = client.fetch_all_markets()
         
         assert markets == []
     
-    @patch.object(KalshiClient, 'dome_client')
-    def test_fetch_all_markets_api_error(self, mock_dome_client, client):
+    def test_fetch_all_markets_api_error(self, client):
         """Test that API errors are properly raised."""
-        mock_dome_client.get_kalshi_markets.side_effect = DomeAPIError("API Error")
+        client.dome_client = Mock()
+        client.dome_client.get_kalshi_markets.side_effect = DomeAPIError("API Error")
         
         with pytest.raises(DomeAPIError):
             client.fetch_all_markets()
     
-    @patch.object(KalshiClient, 'dome_client')
-    def test_fetch_orderbook_success(self, mock_dome_client, client, sample_orderbook_data):
+    def test_fetch_orderbook_success(self, client, sample_orderbook_data):
         """Test fetching orderbook successfully."""
-        mock_dome_client.get_kalshi_orderbook.return_value = sample_orderbook_data
+        client.dome_client = Mock()
+        client.dome_client.get_kalshi_orderbook.return_value = sample_orderbook_data
         
         orderbook = client.fetch_orderbook("TEST-123")
         
@@ -109,10 +109,10 @@ class TestKalshiClient:
         # Asks should be sorted ascending
         assert orderbook.asks[0].price <= orderbook.asks[1].price
     
-    @patch.object(KalshiClient, 'dome_client')
-    def test_fetch_market_details_success(self, mock_dome_client, client, sample_market_data):
+    def test_fetch_market_details_success(self, client, sample_market_data):
         """Test fetching market details successfully."""
-        mock_dome_client.get_kalshi_market_details.return_value = {
+        client.dome_client = Mock()
+        client.dome_client.get_kalshi_market_details.return_value = {
             "data": sample_market_data
         }
         
