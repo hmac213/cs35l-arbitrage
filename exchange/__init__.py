@@ -3,6 +3,7 @@
 from .base import ExchangeClient
 from .clients import KalshiClient, PolymarketClient
 from .models import Market, OrderBook, OrderBookEntry, MarketMetadata
+from .errors import ExchangeAPIError, KalshiAPIError, PolymarketAPIError
 
 __all__ = [
     "ExchangeClient",
@@ -12,5 +13,8 @@ __all__ = [
     "OrderBook",
     "OrderBookEntry",
     "MarketMetadata",
+    "ExchangeAPIError",
+    "KalshiAPIError",
+    "PolymarketAPIError",
 ]
 

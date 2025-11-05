@@ -17,6 +17,10 @@ class ExchangeClient(ABC):
     def fetch_all_markets(self) -> List[Market]:
         """Retrieve all markets from the exchange.
         
+        This method handles pagination internally to fetch all available markets
+        across multiple pages. It manages rate limiting and error handling
+        automatically.
+        
         Returns:
             List[Market]: A list of all available markets on the exchange.
             
