@@ -1,4 +1,7 @@
 requests
+kalshi-python
+supabase
+python-dotenv
 pytest
 pytest-cov
 pytest-mock
