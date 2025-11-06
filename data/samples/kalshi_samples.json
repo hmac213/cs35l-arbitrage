@@ -1,0 +1,157 @@
+{
+  "exchange": "kalshi",
+  "timestamp": "2025-11-28T18:25:40.078336",
+  "num_samples": 3,
+  "samples": [
+    {
+      "market_id": "KXMVESPORTSMULTIGAMEEXTENDED-S20257D2122032BC-6531DB1E8D6",
+      "normalized_market": {
+        "market_id": "KXMVESPORTSMULTIGAMEEXTENDED-S20257D2122032BC-6531DB1E8D6",
+        "name": "yes Los Angeles L,yes Tampa Bay,yes Atlanta,yes Indianapolis,yes Jacksonville,yes Los Angeles R,yes Seattle,yes Miami,yes San Francisco",
+        "rules": "",
+        "metadata": "MarketMetadata(resolve_date=None, resolve_time=None, category=None, subcategory=None, tags=None, description='', image_url=None, liquidity=None, volume=None, extra={'status': 'active', 'yes_bid': 0, 'yes_ask': 0, 'no_bid': 100, 'no_ask': 100, 'last_price': 0, 'previous_price': None, 'event_ticker': 'KXMVESPORTSMULTIGAMEEXTENDED-S20257D2122032BC', 'series_ticker': None})",
+        "exchange": "kalshi",
+        "extra": {
+          "ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S20257D2122032BC-6531DB1E8D6",
+          "event_ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S20257D2122032BC",
+          "title": "yes Los Angeles L,yes Tampa Bay,yes Atlanta,yes Indianapolis,yes Jacksonville,yes Los Angeles R,yes Seattle,yes Miami,yes San Francisco",
+          "subtitle": "",
+          "open_time": "2025-11-29 02:25:39.279338+00:00",
+          "close_time": "2025-12-13 03:00:00+00:00",
+          "expiration_time": "2025-12-13 03:00:00+00:00",
+          "status": "active",
+          "yes_bid": 0,
+          "yes_ask": 0,
+          "no_bid": 100,
+          "no_ask": 100,
+          "last_price": 0,
+          "volume": 0,
+          "volume_24h": 0,
+          "result": "",
+          "can_close_early": true
+        }
+      },
+      "raw_api_response": {
+        "market": {
+          "ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S20257D2122032BC-6531DB1E8D6",
+          "event_ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S20257D2122032BC",
+          "title": "yes Los Angeles L,yes Tampa Bay,yes Atlanta,yes Indianapolis,yes Jacksonville,yes Los Angeles R,yes Seattle,yes Miami,yes San Francisco",
+          "subtitle": "",
+          "open_time": "2025-11-29 02:25:39.279338+00:00",
+          "close_time": "2025-12-13 03:00:00+00:00",
+          "expiration_time": "2025-12-13 03:00:00+00:00",
+          "status": "active",
+          "yes_bid": 0,
+          "yes_ask": 0,
+          "no_bid": 100,
+          "no_ask": 100,
+          "last_price": 0,
+          "volume": 0,
+          "volume_24h": 0,
+          "result": "",
+          "can_close_early": true
+        }
+      }
+    },
+    {
+      "market_id": "KXMVENBASINGLEGAME-S202532768D26866-C0FF96AB614",
+      "normalized_market": {
+        "market_id": "KXMVENBASINGLEGAME-S202532768D26866-C0FF96AB614",
+        "name": "yes Austin Reaves: 1+,yes Luka Don\u010di\u0107: 2+,yes LeBron James: 1+,yes Los Angeles L,yes Cooper Flagg: 10+,yes Luka Don\u010di\u0107: 30+,yes Luka Don\u010di\u0107: 4+",
+        "rules": "",
+        "metadata": "MarketMetadata(resolve_date=None, resolve_time=None, category=None, subcategory=None, tags=None, description='', image_url=None, liquidity=None, volume=None, extra={'status': 'active', 'yes_bid': 0, 'yes_ask': 0, 'no_bid': 100, 'no_ask': 100, 'last_price': 0, 'previous_price': None, 'event_ticker': 'KXMVENBASINGLEGAME-S202532768D26866', 'series_ticker': None})",
+        "exchange": "kalshi",
+        "extra": {
+          "ticker": "KXMVENBASINGLEGAME-S202532768D26866-C0FF96AB614",
+          "event_ticker": "KXMVENBASINGLEGAME-S202532768D26866",
+          "title": "yes Austin Reaves: 1+,yes Luka Don\u010di\u0107: 2+,yes LeBron James: 1+,yes Los Angeles L,yes Cooper Flagg: 10+,yes Luka Don\u010di\u0107: 30+,yes Luka Don\u010di\u0107: 4+",
+          "subtitle": "",
+          "open_time": "2025-11-29 02:25:38.991973+00:00",
+          "close_time": "2025-12-13 03:00:00+00:00",
+          "expiration_time": "2025-12-13 03:00:00+00:00",
+          "status": "active",
+          "yes_bid": 0,
+          "yes_ask": 0,
+          "no_bid": 100,
+          "no_ask": 100,
+          "last_price": 0,
+          "volume": 0,
+          "volume_24h": 0,
+          "result": "",
+          "can_close_early": true
+        }
+      },
+      "raw_api_response": {
+        "market": {
+          "ticker": "KXMVENBASINGLEGAME-S202532768D26866-C0FF96AB614",
+          "event_ticker": "KXMVENBASINGLEGAME-S202532768D26866",
+          "title": "yes Austin Reaves: 1+,yes Luka Don\u010di\u0107: 2+,yes LeBron James: 1+,yes Los Angeles L,yes Cooper Flagg: 10+,yes Luka Don\u010di\u0107: 30+,yes Luka Don\u010di\u0107: 4+",
+          "subtitle": "",
+          "open_time": "2025-11-29 02:25:38.991973+00:00",
+          "close_time": "2025-12-13 03:00:00+00:00",
+          "expiration_time": "2025-12-13 03:00:00+00:00",
+          "status": "active",
+          "yes_bid": 0,
+          "yes_ask": 0,
+          "no_bid": 100,
+          "no_ask": 100,
+          "last_price": 0,
+          "volume": 0,
+          "volume_24h": 0,
+          "result": "",
+          "can_close_early": true
+        }
+      }
+    },
+    {
+      "market_id": "KXMVESPORTSMULTIGAMEEXTENDED-S2025240653F959E-2CF1015370F",
+      "normalized_market": {
+        "market_id": "KXMVESPORTSMULTIGAMEEXTENDED-S2025240653F959E-2CF1015370F",
+        "name": "yes Cleveland,no Cleveland wins by over 7.5 points",
+        "rules": "",
+        "metadata": "MarketMetadata(resolve_date=None, resolve_time=None, category=None, subcategory=None, tags=None, description='', image_url=None, liquidity=None, volume=None, extra={'status': 'active', 'yes_bid': 0, 'yes_ask': 0, 'no_bid': 100, 'no_ask': 100, 'last_price': 0, 'previous_price': None, 'event_ticker': 'KXMVESPORTSMULTIGAMEEXTENDED-S2025240653F959E', 'series_ticker': None})",
+        "exchange": "kalshi",
+        "extra": {
+          "ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S2025240653F959E-2CF1015370F",
+          "event_ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S2025240653F959E",
+          "title": "yes Cleveland,no Cleveland wins by over 7.5 points",
+          "subtitle": "",
+          "open_time": "2025-11-29 02:25:38.596276+00:00",
+          "close_time": "2025-12-14 18:00:00+00:00",
+          "expiration_time": "2025-12-14 18:00:00+00:00",
+          "status": "active",
+          "yes_bid": 0,
+          "yes_ask": 0,
+          "no_bid": 100,
+          "no_ask": 100,
+          "last_price": 0,
+          "volume": 0,
+          "volume_24h": 0,
+          "result": "",
+          "can_close_early": true
+        }
+      },
+      "raw_api_response": {
+        "market": {
+          "ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S2025240653F959E-2CF1015370F",
+          "event_ticker": "KXMVESPORTSMULTIGAMEEXTENDED-S2025240653F959E",
+          "title": "yes Cleveland,no Cleveland wins by over 7.5 points",
+          "subtitle": "",
+          "open_time": "2025-11-29 02:25:38.596276+00:00",
+          "close_time": "2025-12-14 18:00:00+00:00",
+          "expiration_time": "2025-12-14 18:00:00+00:00",
+          "status": "active",
+          "yes_bid": 0,
+          "yes_ask": 0,
+          "no_bid": 100,
+          "no_ask": 100,
+          "last_price": 0,
+          "volume": 0,
+          "volume_24h": 0,
+          "result": "",
+          "can_close_early": true
+        }
+      }
+    }
+  ]
+}
