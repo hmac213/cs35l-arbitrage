@@ -395,44 +395,67 @@ class KalshiClient(ExchangeClient):
             ''
         )
         
-        # Extract rules
-        rules = (
-            market_data.get('rules') or
-            market_data.get('subtitle') or
-            market_data.get('description') or
-            ''
-        )
+        # Extract rules - Kalshi has rules_primary and rules_secondary that should be combined
+        rules_parts = []
+        if market_data.get('rules_primary'):
+            rules_parts.append(str(market_data.get('rules_primary')))
+        if market_data.get('rules_secondary'):
+            rules_parts.append(str(market_data.get('rules_secondary')))
+        
+        # Combine rules_primary and rules_secondary, or fall back to other fields
+        if rules_parts:
+            rules = '\n\n'.join(rules_parts)  # Join with double newline for readability
+        else:
+            rules = (
+                market_data.get('rules') or
+                market_data.get('subtitle') or
+                market_data.get('description') or
+                ''
+            )
         
         # Extract expiration/resolution time
-        expiration_time = market_data.get('expected_expiration_time') or market_data.get('expiration_time')
+        # Prefer close_time or expiration_time for resolve date/time
+        resolution_datetime = (
+            market_data.get('close_time') or
+            market_data.get('expiration_time') or
+            market_data.get('expected_expiration_time')
+        )
         resolve_date = None
         resolve_time = None
         
-        if expiration_time:
+        if resolution_datetime:
             try:
-                if isinstance(expiration_time, str):
-                    dt = datetime.fromisoformat(expiration_time.replace('Z', '+00:00'))
+                if isinstance(resolution_datetime, str):
+                    dt = datetime.fromisoformat(resolution_datetime.replace('Z', '+00:00'))
                     resolve_date = dt.strftime('%Y-%m-%d')
                     resolve_time = dt.strftime('%H:%M:%S')
-                elif isinstance(expiration_time, (int, float)):
-                    dt = datetime.fromtimestamp(expiration_time)
+                elif isinstance(resolution_datetime, (int, float)):
+                    dt = datetime.fromtimestamp(resolution_datetime)
                     resolve_date = dt.strftime('%Y-%m-%d')
                     resolve_time = dt.strftime('%H:%M:%S')
             except (ValueError, TypeError, OSError):
                 pass
         
         # Extract metadata
+        # Kalshi doesn't have tags, category, or subcategory in standard format
+        # Store all Kalshi-specific fields in extra
         metadata = MarketMetadata(
             resolve_date=resolve_date,
             resolve_time=resolve_time,
-            category=market_data.get('category') or market_data.get('series_ticker'),
-            subcategory=market_data.get('subcategory'),
-            tags=market_data.get('tags') or market_data.get('keywords'),
+            category=None,  # Kalshi doesn't provide category
+            subcategory=None,  # Kalshi doesn't provide subcategory
+            tags=None,  # Kalshi doesn't provide tags
             description=market_data.get('description') or market_data.get('subtitle'),
-            image_url=market_data.get('image_url') or market_data.get('image'),
-            liquidity=market_data.get('liquidity'),
-            volume=market_data.get('volume') or market_data.get('total_volume'),
+            image_url=None,  # Kalshi doesn't provide image URLs
+            liquidity=None,  # Kalshi doesn't expose liquidity
+            volume=market_data.get('volume') or market_data.get('volume_24h') or market_data.get('total_volume'),
             extra={
+                'ticker': market_data.get('ticker'),
+                'event_ticker': market_data.get('event_ticker'),
+                'series_ticker': market_data.get('series_ticker'),
+                'open_time': market_data.get('open_time'),
+                'close_time': market_data.get('close_time'),
+                'expiration_time': market_data.get('expiration_time'),
                 'status': market_data.get('status'),
                 'yes_bid': market_data.get('yes_bid'),
                 'yes_ask': market_data.get('yes_ask'),
@@ -440,8 +463,10 @@ class KalshiClient(ExchangeClient):
                 'no_ask': market_data.get('no_ask'),
                 'last_price': market_data.get('last_price'),
                 'previous_price': market_data.get('previous_price'),
-                'event_ticker': market_data.get('event_ticker'),
-                'series_ticker': market_data.get('series_ticker'),
+                'result': market_data.get('result'),
+                'can_close_early': market_data.get('can_close_early'),
+                'rules_primary': market_data.get('rules_primary'),  # Store original fields in extra
+                'rules_secondary': market_data.get('rules_secondary'),
             }
         )
         

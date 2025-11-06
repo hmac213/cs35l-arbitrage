@@ -492,26 +492,70 @@ class PolymarketClient(ExchangeClient):
             except (ValueError, TypeError, OSError):
                 resolve_date = str(resolution_date)
         
+        # Extract tags - Polymarket provides tags as array of objects with id, label, slug
+        # Extract labels for unified tags array
+        tags_list = None
+        raw_tags = merged_data.get('tags') or market_data.get('tags')
+        if raw_tags:
+            if isinstance(raw_tags, list):
+                # Extract labels from tag objects
+                tags_list = []
+                for tag in raw_tags:
+                    if isinstance(tag, dict):
+                        label = tag.get('label') or tag.get('slug')
+                        if label:
+                            tags_list.append(str(label))
+                    elif isinstance(tag, str):
+                        tags_list.append(tag)
+        
+        # Extract category from primary tag (first tag with forceShow or first tag)
+        category = None
+        if raw_tags and isinstance(raw_tags, list) and len(raw_tags) > 0:
+            # Look for primary category tag (often the first one or one with forceShow)
+            for tag in raw_tags:
+                if isinstance(tag, dict):
+                    if tag.get('forceShow') or tag.get('isCarousel'):
+                        category = tag.get('label') or tag.get('slug')
+                        break
+            # If no primary tag found, use first tag's label
+            if not category and isinstance(raw_tags[0], dict):
+                category = raw_tags[0].get('label') or raw_tags[0].get('slug')
+        
+        # Convert liquidity from string to float if present
+        liquidity = None
+        liquidity_raw = (
+            merged_data.get('liquidity') or
+            market_data.get('liquidity') or
+            merged_data.get('liquidityNum') or
+            market_data.get('liquidityNum') or
+            merged_data.get('liquidity_usd')
+        )
+        if liquidity_raw is not None:
+            try:
+                if isinstance(liquidity_raw, str):
+                    liquidity = float(liquidity_raw)
+                else:
+                    liquidity = float(liquidity_raw)
+            except (ValueError, TypeError):
+                pass
+        
         # Extract metadata
         metadata = MarketMetadata(
             resolve_date=resolve_date,
             resolve_time=resolve_time,
-            category=(
-                merged_data.get('category') or
-                merged_data.get('groupItemTitle') or
-                merged_data.get('group_item_title') or
-                market_data.get('category')
-            ),
+            category=category,
             subcategory=merged_data.get('subcategory') or market_data.get('subcategory'),
-            tags=merged_data.get('tags') or market_data.get('tags'),
+            tags=tags_list,
             description=merged_data.get('description') or market_data.get('description') or merged_data.get('subtitle'),
             image_url=(
+                merged_data.get('image') or
+                merged_data.get('icon') or
                 merged_data.get('imageUrl') or
                 merged_data.get('image_url') or
-                market_data.get('imageUrl') or
-                market_data.get('image')
+                market_data.get('image') or
+                market_data.get('icon')
             ),
-            liquidity=merged_data.get('liquidity') or market_data.get('liquidity') or merged_data.get('liquidity_usd'),
+            liquidity=liquidity,
             volume=(
                 merged_data.get('volume') or
                 market_data.get('volume') or
@@ -519,15 +563,25 @@ class PolymarketClient(ExchangeClient):
                 market_data.get('total_volume')
             ),
             extra={
+                'id': merged_data.get('id') or market_data.get('id'),
+                'conditionId': merged_data.get('conditionId') or merged_data.get('condition_id') or market_data.get('conditionId'),
+                'clobTokenIds': merged_data.get('clobTokenIds') or market_data.get('clob_token_ids') or market_data.get('clobTokenIds'),
+                'token_id': market_data.get('token_id') or merged_data.get('token_id'),
+                'resolutionSource': merged_data.get('resolutionSource') or market_data.get('resolutionSource'),
+                'startDate': merged_data.get('startDate') or market_data.get('startDate'),
+                'creationDate': merged_data.get('creationDate') or market_data.get('creationDate'),
+                'endDate': merged_data.get('endDate') or market_data.get('endDate'),
                 'outcomes': merged_data.get('outcomes') or market_data.get('outcomes'),
                 'active': merged_data.get('active') or market_data.get('active'),
                 'closed': merged_data.get('closed') or market_data.get('closed'),
+                'archived': merged_data.get('archived') or market_data.get('archived'),
                 'new': merged_data.get('new') or market_data.get('new'),
-                'end_date_iso': merged_data.get('end_date_iso') or market_data.get('end_date_iso'),
-                'start_date_iso': merged_data.get('start_date_iso') or market_data.get('start_date_iso'),
-                'clobTokenIds': merged_data.get('clobTokenIds') or market_data.get('clob_token_ids') or market_data.get('clobTokenIds'),
-                'conditionId': merged_data.get('conditionId') or merged_data.get('condition_id') or market_data.get('conditionId'),
-                'token_id': market_data.get('token_id') or merged_data.get('token_id'),
+                'featured': merged_data.get('featured') or market_data.get('featured'),
+                'restricted': merged_data.get('restricted') or market_data.get('restricted'),
+                'end_date_iso': merged_data.get('endDateIso') or merged_data.get('end_date_iso') or market_data.get('endDateIso'),
+                'start_date_iso': merged_data.get('startDateIso') or merged_data.get('start_date_iso') or market_data.get('startDateIso'),
+                'series': merged_data.get('series') or market_data.get('series'),
+                'tags_full': raw_tags,  # Store full tag objects in extra
             }
         )
         
