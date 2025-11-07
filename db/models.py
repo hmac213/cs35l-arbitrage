@@ -5,6 +5,22 @@ from typing import Optional, List, Dict, Any
 from datetime import date, time, datetime
 
 
+def _convert_datetime_for_json(obj: Any) -> Any:
+    """Recursively convert datetime objects to ISO format strings for JSON serialization."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, date):
+        return obj.isoformat()
+    elif isinstance(obj, time):
+        return obj.isoformat()
+    elif isinstance(obj, dict):
+        return {k: _convert_datetime_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_datetime_for_json(item) for item in obj]
+    else:
+        return obj
+
+
 @dataclass
 class DatabaseMarket:
     """Database model for markets table.
@@ -23,10 +39,6 @@ class DatabaseMarket:
     subcategory: Optional[str] = None
     tags: Optional[List[str]] = None
     description: Optional[str] = None
-    image_url: Optional[str] = None
-    liquidity: Optional[float] = None
-    volume: Optional[float] = None
-    extra: Optional[Dict[str, Any]] = None
     status: Optional[str] = 'active'  # 'active', 'expired', 'processing'
     last_polled_at: Optional[datetime] = None
     id: Optional[str] = None  # UUID from database
@@ -42,15 +54,44 @@ class DatabaseMarket:
         Returns:
             Dictionary representation suitable for Supabase operations.
         """
-        data = asdict(self)
+        # Build dict manually to handle datetime conversions properly
+        data = {}
         
-        # Remove fields that shouldn't be inserted/updated
-        data.pop('id', None)
-        data.pop('created_at', None)
-        data.pop('updated_at', None)
+        # Add all fields except those that shouldn't be inserted/updated
+        if self.market_id is not None:
+            data['market_id'] = self.market_id
+        if self.exchange is not None:
+            data['exchange'] = self.exchange
+        if self.name is not None:
+            data['name'] = self.name
+        if self.rules is not None:
+            data['rules'] = self.rules
+        if self.resolve_date is not None:
+            data['resolve_date'] = self.resolve_date.isoformat() if isinstance(self.resolve_date, date) else self.resolve_date
+        if self.resolve_time is not None:
+            data['resolve_time'] = self.resolve_time.isoformat() if isinstance(self.resolve_time, time) else self.resolve_time
+        if self.category is not None:
+            data['category'] = self.category
+        if self.subcategory is not None:
+            data['subcategory'] = self.subcategory
+        if self.tags is not None:
+            data['tags'] = self.tags
+        if self.description is not None:
+            data['description'] = self.description
+        if self.status is not None:
+            data['status'] = self.status
+        if self.last_polled_at is not None:
+            # Convert datetime to ISO format string
+            if isinstance(self.last_polled_at, datetime):
+                data['last_polled_at'] = self.last_polled_at.isoformat()
+            else:
+                data['last_polled_at'] = self.last_polled_at
         
         if exclude_none:
             data = {k: v for k, v in data.items() if v is not None}
+        
+        # Recursively convert any remaining datetime objects
+        data = _convert_datetime_for_json(data)
         
         return data
     
@@ -121,10 +162,6 @@ class DatabaseMarket:
             subcategory=metadata.subcategory,
             tags=metadata.tags,
             description=metadata.description,
-            image_url=metadata.image_url,
-            liquidity=metadata.liquidity,
-            volume=metadata.volume,
-            extra=metadata.extra,
             status='active',  # New markets start as active
             last_polled_at=None  # Will be set during sync
         )
@@ -187,10 +224,6 @@ class DatabaseMarket:
             subcategory=data.get('subcategory'),
             tags=data.get('tags'),
             description=data.get('description'),
-            image_url=data.get('image_url'),
-            liquidity=data.get('liquidity'),
-            volume=data.get('volume'),
-            extra=data.get('extra'),
             status=data.get('status', 'active'),
             last_polled_at=last_polled_at,
             created_at=created_at,

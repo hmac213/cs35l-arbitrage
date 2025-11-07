@@ -3,7 +3,6 @@
 import os
 from typing import List, Optional, Dict, Any
 from supabase import create_client, Client
-from supabase.lib.client_options import ClientOptions
 
 from .models import DatabaseMarket
 
@@ -36,11 +35,7 @@ class SupabaseClient:
         
         self.client: Client = create_client(
             self.supabase_url,
-            self.supabase_key,
-            options=ClientOptions(
-                postgrest_client_timeout=30,
-                storage_client_timeout=30,
-            )
+            self.supabase_key
         )
     
     def upsert_market(self, market: DatabaseMarket) -> Dict[str, Any]:
@@ -66,11 +61,16 @@ class SupabaseClient:
             return response.data[0] if isinstance(response.data, list) else response.data
         return {}
     
-    def upsert_markets(self, markets: List[DatabaseMarket]) -> List[Dict[str, Any]]:
+    def upsert_markets(
+        self, 
+        markets: List[DatabaseMarket], 
+        batch_size: int = 500
+    ) -> List[Dict[str, Any]]:
         """Insert or update multiple markets in the database.
         
         Args:
             markets: List of DatabaseMarket instances to upsert.
+            batch_size: Number of markets to upsert per batch (default: 500).
             
         Returns:
             List of dictionaries containing the inserted/updated market data.
@@ -78,16 +78,30 @@ class SupabaseClient:
         if not markets:
             return []
         
-        data = [market.to_dict(exclude_none=True) for market in markets]
+        # Deduplicate markets by (market_id, exchange) - keep the last occurrence
+        seen = {}
+        for market in markets:
+            key = (market.market_id, market.exchange)
+            seen[key] = market
+        deduplicated_markets = list(seen.values())
         
-        response = self.client.table("markets").upsert(
-            data,
-            on_conflict="market_id,exchange"
-        ).execute()
+        all_results = []
         
-        if response.data:
-            return response.data if isinstance(response.data, list) else [response.data]
-        return []
+        # Process in batches to avoid timeout
+        for i in range(0, len(deduplicated_markets), batch_size):
+            batch = deduplicated_markets[i:i + batch_size]
+            data = [market.to_dict(exclude_none=True) for market in batch]
+            
+            response = self.client.table("markets").upsert(
+                data,
+                on_conflict="market_id,exchange"
+            ).execute()
+            
+            if response.data:
+                batch_results = response.data if isinstance(response.data, list) else [response.data]
+                all_results.extend(batch_results)
+        
+        return all_results
     
     def get_market(self, market_id: str, exchange: str) -> Optional[DatabaseMarket]:
         """Get a single market by market_id and exchange.
@@ -207,6 +221,49 @@ class SupabaseClient:
         ).eq("exchange", exchange).execute()
         
         return response.data is not None
+    
+    def delete_markets_batch(
+        self,
+        markets: List[DatabaseMarket],
+        batch_size: int = 100
+    ) -> int:
+        """Delete multiple markets from the database in batches.
+        
+        Args:
+            markets: List of DatabaseMarket instances to delete.
+            batch_size: Number of markets to delete per batch (default: 100).
+            
+        Returns:
+            Number of markets successfully deleted.
+        """
+        if not markets:
+            return 0
+        
+        deleted_count = 0
+        
+        # Group by exchange for more efficient batch deletion
+        by_exchange = {}
+        for market in markets:
+            if market.exchange not in by_exchange:
+                by_exchange[market.exchange] = []
+            by_exchange[market.exchange].append(market.market_id)
+        
+        # Delete in batches per exchange
+        for exchange, market_ids in by_exchange.items():
+            # Process in batches
+            for i in range(0, len(market_ids), batch_size):
+                batch_ids = market_ids[i:i + batch_size]
+                
+                # Use .in_() for batch deletion
+                response = self.client.table("markets").delete().eq(
+                    "exchange", exchange
+                ).in_("market_id", batch_ids).execute()
+                
+                # Count deleted (response.data is a list of deleted records)
+                if response.data:
+                    deleted_count += len(response.data) if isinstance(response.data, list) else 1
+        
+        return deleted_count
     
     def sync_market_from_exchange(self, exchange_market) -> DatabaseMarket:
         """Sync a market from an exchange client to the database.
