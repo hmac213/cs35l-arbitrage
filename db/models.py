@@ -27,6 +27,8 @@ class DatabaseMarket:
     liquidity: Optional[float] = None
     volume: Optional[float] = None
     extra: Optional[Dict[str, Any]] = None
+    status: Optional[str] = 'active'  # 'active', 'expired', 'processing'
+    last_polled_at: Optional[datetime] = None
     id: Optional[str] = None  # UUID from database
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -51,6 +53,28 @@ class DatabaseMarket:
             data = {k: v for k, v in data.items() if v is not None}
         
         return data
+    
+    def is_expired(self) -> bool:
+        """Check if market has passed its resolve date/time.
+        
+        Returns:
+            True if market has expired, False otherwise.
+        """
+        if not self.resolve_date:
+            return False
+        
+        from datetime import datetime, timezone
+        
+        # Combine resolve_date and resolve_time
+        if self.resolve_time:
+            resolve_datetime = datetime.combine(self.resolve_date, self.resolve_time)
+        else:
+            # If no time specified, assume end of day
+            resolve_datetime = datetime.combine(self.resolve_date, datetime.max.time())
+        
+        # Compare with current time (UTC)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        return resolve_datetime < now
 
     @classmethod
     def from_exchange_market(cls, market) -> 'DatabaseMarket':
@@ -100,7 +124,9 @@ class DatabaseMarket:
             image_url=metadata.image_url,
             liquidity=metadata.liquidity,
             volume=metadata.volume,
-            extra=metadata.extra
+            extra=metadata.extra,
+            status='active',  # New markets start as active
+            last_polled_at=None  # Will be set during sync
         )
 
     @classmethod
@@ -142,6 +168,13 @@ class DatabaseMarket:
             except ValueError:
                 updated_at = None
         
+        last_polled_at = data.get('last_polled_at')
+        if isinstance(last_polled_at, str):
+            try:
+                last_polled_at = datetime.fromisoformat(last_polled_at.replace('Z', '+00:00'))
+            except ValueError:
+                last_polled_at = None
+        
         return cls(
             id=data.get('id'),
             market_id=data['market_id'],
@@ -158,6 +191,8 @@ class DatabaseMarket:
             liquidity=data.get('liquidity'),
             volume=data.get('volume'),
             extra=data.get('extra'),
+            status=data.get('status', 'active'),
+            last_polled_at=last_polled_at,
             created_at=created_at,
             updated_at=updated_at
         )
