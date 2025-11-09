@@ -230,3 +230,129 @@ class DatabaseMarket:
             updated_at=updated_at
         )
 
+
+@dataclass
+class MarketPair:
+    """Database model for market_pairs table.
+    
+    This model represents a pair of matching markets from different exchanges.
+    """
+    market_1_id: str  # UUID from markets table
+    market_1_exchange: str
+    market_2_id: str  # UUID from markets table
+    market_2_exchange: str
+    similarity_score: float
+    llm_verified: bool = False
+    llm_confidence: Optional[float] = None
+    id: Optional[str] = None  # UUID from database
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def to_dict(self, exclude_none: bool = False) -> Dict[str, Any]:
+        """Convert to dictionary for database operations.
+        
+        Args:
+            exclude_none: If True, exclude None values from the dict.
+            
+        Returns:
+            Dictionary representation suitable for Supabase operations.
+        """
+        data = {
+            'market_1_id': self.market_1_id,
+            'market_1_exchange': self.market_1_exchange,
+            'market_2_id': self.market_2_id,
+            'market_2_exchange': self.market_2_exchange,
+            'similarity_score': float(self.similarity_score),
+            'llm_verified': self.llm_verified,
+        }
+        
+        if self.llm_confidence is not None:
+            data['llm_confidence'] = float(self.llm_confidence)
+        
+        if exclude_none:
+            data = {k: v for k, v in data.items() if v is not None}
+        
+        # Convert datetime objects
+        data = _convert_datetime_for_json(data)
+        
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'MarketPair':
+        """Create MarketPair from dictionary (e.g., from Supabase response).
+        
+        Args:
+            data: Dictionary with market pair data.
+            
+        Returns:
+            MarketPair instance.
+        """
+        created_at = data.get('created_at')
+        if isinstance(created_at, str):
+            try:
+                created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            except ValueError:
+                created_at = None
+        
+        updated_at = data.get('updated_at')
+        if isinstance(updated_at, str):
+            try:
+                updated_at = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+            except ValueError:
+                updated_at = None
+        
+        return cls(
+            id=data.get('id'),
+            market_1_id=data['market_1_id'],
+            market_1_exchange=data['market_1_exchange'],
+            market_2_id=data['market_2_id'],
+            market_2_exchange=data['market_2_exchange'],
+            similarity_score=float(data.get('similarity_score', 0.0)),
+            llm_verified=bool(data.get('llm_verified', False)),
+            llm_confidence=float(data['llm_confidence']) if data.get('llm_confidence') is not None else None,
+            created_at=created_at,
+            updated_at=updated_at
+        )
+
+    @classmethod
+    def from_markets(
+        cls,
+        market1: 'DatabaseMarket',
+        market2: 'DatabaseMarket',
+        similarity_score: float,
+        llm_verified: bool = False,
+        llm_confidence: Optional[float] = None
+    ) -> 'MarketPair':
+        """Create MarketPair from two DatabaseMarket instances.
+        
+        Args:
+            market1: First market (must have id from database).
+            market2: Second market (must have id from database).
+            similarity_score: Similarity score from vector search.
+            llm_verified: Whether LLM verified the match.
+            llm_confidence: LLM confidence score if available.
+            
+        Returns:
+            MarketPair instance.
+        """
+        if not market1.id or not market2.id:
+            raise ValueError("Both markets must have database IDs (id field)")
+        
+        # Ensure markets are from different exchanges
+        if market1.exchange == market2.exchange:
+            raise ValueError("Markets must be from different exchanges")
+        
+        # Order markets consistently (alphabetically by exchange)
+        if market1.exchange > market2.exchange:
+            market1, market2 = market2, market1
+        
+        return cls(
+            market_1_id=market1.id,
+            market_1_exchange=market1.exchange,
+            market_2_id=market2.id,
+            market_2_exchange=market2.exchange,
+            similarity_score=similarity_score,
+            llm_verified=llm_verified,
+            llm_confidence=llm_confidence
+        )
+

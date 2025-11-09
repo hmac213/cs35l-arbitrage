@@ -4,7 +4,7 @@ import os
 from typing import List, Optional, Dict, Any
 from supabase import create_client, Client
 
-from .models import DatabaseMarket
+from .models import DatabaseMarket, MarketPair
 
 
 class SupabaseClient:
@@ -292,4 +292,126 @@ class SupabaseClient:
         db_markets = [DatabaseMarket.from_exchange_market(m) for m in exchange_markets]
         results = self.upsert_markets(db_markets)
         return [DatabaseMarket.from_dict(result) for result in results]
+    
+    def upsert_market_pair(self, pair: MarketPair) -> Dict[str, Any]:
+        """Insert or update a market pair in the database.
+        
+        Uses the unique constraint on (market_1_id, market_2_id) to determine
+        if the pair already exists. If it exists, updates it; otherwise inserts.
+        
+        Args:
+            pair: MarketPair instance to upsert.
+            
+        Returns:
+            Dictionary containing the inserted/updated pair data.
+        """
+        data = pair.to_dict(exclude_none=True)
+        
+        response = self.client.table("market_pairs").upsert(
+            data,
+            on_conflict="market_1_id,market_2_id"
+        ).execute()
+        
+        if response.data:
+            return response.data[0] if isinstance(response.data, list) else response.data
+        return {}
+    
+    def get_market_pairs_by_market(self, market_id: str, exchange: str) -> List[MarketPair]:
+        """Get all market pairs that include a specific market.
+        
+        Args:
+            market_id: The market identifier (market_id field, not UUID).
+            exchange: The exchange name ('kalshi' or 'polymarket').
+            
+        Returns:
+            List of MarketPair instances.
+        """
+        # First get the market's UUID
+        market = self.get_market(market_id, exchange)
+        if not market or not market.id:
+            return []
+        
+        # Query pairs where this market is either market_1 or market_2
+        response = self.client.table("market_pairs").select("*").or_(
+            f"market_1_id.eq.{market.id},market_2_id.eq.{market.id}"
+        ).execute()
+        
+        if response.data:
+            return [MarketPair.from_dict(item) for item in response.data]
+        return []
+    
+    def get_all_market_pairs(
+        self,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        llm_verified: Optional[bool] = None
+    ) -> List[MarketPair]:
+        """Get all market pairs.
+        
+        Args:
+            limit: Maximum number of results to return.
+            offset: Number of results to skip.
+            llm_verified: Filter by LLM verification status (optional).
+            
+        Returns:
+            List of MarketPair instances.
+        """
+        query = self.client.table("market_pairs").select("*")
+        
+        if llm_verified is not None:
+            query = query.eq("llm_verified", llm_verified)
+        
+        if limit:
+            query = query.limit(limit)
+        if offset:
+            query = query.offset(offset)
+        
+        response = query.execute()
+        
+        if response.data:
+            return [MarketPair.from_dict(item) for item in response.data]
+        return []
+    
+    def delete_market_pair(self, pair_id: str) -> bool:
+        """Delete a market pair from the database.
+        
+        Args:
+            pair_id: The pair UUID (id field).
+            
+        Returns:
+            True if deleted, False otherwise.
+        """
+        response = self.client.table("market_pairs").delete().eq(
+            "id", pair_id
+        ).execute()
+        
+        return response.data is not None
+    
+    def delete_pairs_by_market(self, market_id: str, exchange: str) -> int:
+        """Delete all market pairs that include a specific market.
+        
+        This is useful when a market is deleted and we need to clean up pairs.
+        Note: The database foreign key constraint should handle this automatically,
+        but this method provides explicit cleanup if needed.
+        
+        Args:
+            market_id: The market identifier (market_id field, not UUID).
+            exchange: The exchange name ('kalshi' or 'polymarket').
+            
+        Returns:
+            The number of deleted pairs.
+        """
+        # First get the market's UUID
+        market = self.get_market(market_id, exchange)
+        if not market or not market.id:
+            return 0
+        
+        # Delete pairs where this market is either market_1 or market_2
+        response = self.client.table("market_pairs").delete().or_(
+            f"market_1_id.eq.{market.id},market_2_id.eq.{market.id}"
+        ).execute()
+        
+        if response.data:
+            return len(response.data) if isinstance(response.data, list) else 1
+        return 0
 
