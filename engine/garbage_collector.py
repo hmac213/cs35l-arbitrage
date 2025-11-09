@@ -61,6 +61,7 @@ class GarbageCollector:
         - Kalshi multigame extended markets
         - Markets with "PLACEHOLDER" in the name (template/test markets)
         - Markets with very short or empty names
+        - Markets with empty or null rules
         
         Args:
             markets: List of Market instances from API.
@@ -99,6 +100,11 @@ class GarbageCollector:
             if not market.name or len(market.name.strip()) < 5:
                 is_bad = True
                 reason.append('invalid_name')
+            
+            # Filter markets with empty or null rules
+            if not market.rules or not market.rules.strip():
+                is_bad = True
+                reason.append('empty_rules')
             
             if is_bad:
                 bad_markets.append(market)
@@ -168,6 +174,11 @@ class GarbageCollector:
                 if not market.name or len(market.name.strip()) < 5:
                     is_bad = True
                     reason.append('invalid_name')
+                
+                # Check for empty or null rules
+                if not market.rules or not market.rules.strip():
+                    is_bad = True
+                    reason.append('empty_rules')
                 
                 if is_bad:
                     bad_in_batch.append((market, reason))
