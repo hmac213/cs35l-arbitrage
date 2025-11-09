@@ -35,6 +35,8 @@ class KalshiClient(ExchangeClient):
         private_key: Optional[str] = None,
         rate_limit_delay: float = 0.1
     ):
+        # Cache for event metadata to avoid repeated API calls
+        self._event_metadata_cache: dict[str, dict] = {}
         """Initialize the Kalshi client.
         
         Args:
@@ -83,7 +85,8 @@ class KalshiClient(ExchangeClient):
         cursor: Optional[str] = None,
         max_pages: Optional[int] = None,
         page_size: Optional[int] = None,
-        progress_callback: Optional[Callable[[int, int], None]] = None
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        fetch_image_urls: bool = False
     ) -> List[Market]:
         """Retrieve all markets from Kalshi.
         
@@ -150,7 +153,7 @@ class KalshiClient(ExchangeClient):
                         for market_raw in response.markets:
                             # Convert SDK model to dict for normalization
                             market_dict = self._sdk_model_to_dict(market_raw)
-                            market = self._normalize_market(market_dict)
+                            market = self._normalize_market(market_dict, fetch_image_urls=fetch_image_urls)
                             if market:
                                 page_markets.append(market)
                     
@@ -305,7 +308,8 @@ class KalshiClient(ExchangeClient):
             if isinstance(market_dict, dict) and not market_dict.get('ticker') and not market_dict.get('event_ticker'):
                 market_dict['ticker'] = market_id
             
-            return self._normalize_market(market_dict)
+            # For fetch_market_details, fetch image URLs since it's a single market
+            return self._normalize_market(market_dict, fetch_image_urls=True)
         except ApiException as e:
             # Check if it's a rate limit error
             if hasattr(e, 'status') and e.status == 429:
@@ -335,7 +339,8 @@ class KalshiClient(ExchangeClient):
                     if isinstance(market_dict, dict) and not market_dict.get('ticker') and not market_dict.get('event_ticker'):
                         market_dict['ticker'] = market_id
                     
-                    return self._normalize_market(market_dict)
+                    # For fetch_market_details, fetch image URLs since it's a single market
+                    return self._normalize_market(market_dict, fetch_image_urls=True)
                 except ApiException as retry_e:
                     raise KalshiAPIError(f"Kalshi API error after retry: {str(retry_e)}") from retry_e
             raise KalshiAPIError(f"Kalshi API error: {str(e)}") from e
@@ -368,7 +373,109 @@ class KalshiClient(ExchangeClient):
             # Fallback: try to convert to string representation
             return str(model)
 
-    def _normalize_market(self, market_data: dict) -> Market:
+    def _fetch_event_metadata(self, event_ticker: str) -> Optional[dict]:
+        """Fetch event metadata including image URLs.
+        
+        Uses caching to avoid repeated API calls for the same event.
+        
+        Args:
+            event_ticker: The event ticker to fetch metadata for.
+            
+        Returns:
+            Dictionary with event metadata, or None if not found.
+        """
+        if not event_ticker:
+            return None
+        
+        # Check cache first
+        if event_ticker in self._event_metadata_cache:
+            return self._event_metadata_cache[event_ticker]
+        
+        try:
+            # Rate limit before request
+            self.rate_limiter.wait_if_needed()
+            
+            # Use REST API to fetch event metadata
+            import requests
+            url = f"{self.host}/events/{event_ticker}/metadata"
+            
+            try:
+                response_obj = requests.get(url, timeout=30)
+                
+                # Handle rate limit errors
+                if response_obj.status_code == 429:
+                    logger.warning(f"Rate limit hit (429) for event metadata, backing off...")
+                    self.rate_limiter.handle_rate_limit_error()
+                    self.rate_limiter.wait_if_needed()
+                    # Retry once
+                    response_obj = requests.get(url, timeout=30)
+                
+                response_obj.raise_for_status()
+                self.rate_limiter.record_request()
+                self.rate_limiter.reset_delay()
+                
+                metadata = response_obj.json()
+                # Cache the result
+                self._event_metadata_cache[event_ticker] = metadata
+                return metadata
+            except requests.exceptions.HTTPError as e:
+                if response_obj.status_code == 404:
+                    # Event metadata not found - not an error, just return None
+                    logger.debug(f"Event metadata not found for {event_ticker}")
+                    return None
+                if response_obj.status_code == 429:
+                    self.rate_limiter.handle_rate_limit_error()
+                    self.rate_limiter.wait_if_needed()
+                    # Retry once
+                    response_obj = requests.get(url, timeout=30)
+                    response_obj.raise_for_status()
+                    self.rate_limiter.record_request()
+                    metadata = response_obj.json()
+                    # Cache the result
+                    self._event_metadata_cache[event_ticker] = metadata
+                    return metadata
+                error_msg = f"HTTP {response_obj.status_code}: {response_obj.text}"
+                logger.warning(f"Failed to fetch event metadata for {event_ticker}: {error_msg}")
+                return None
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"Request failed for event metadata {event_ticker}: {str(e)}")
+                return None
+        except Exception as e:
+            logger.warning(f"Error fetching event metadata for {event_ticker}: {str(e)}")
+            return None
+    
+    def _get_market_image_url(self, market_ticker: str, event_ticker: Optional[str], event_metadata: Optional[dict] = None) -> Optional[str]:
+        """Get image URL for a market from event metadata.
+        
+        Args:
+            market_ticker: The market ticker.
+            event_ticker: The event ticker (optional, used to fetch metadata if not provided).
+            event_metadata: Pre-fetched event metadata (optional).
+            
+        Returns:
+            Image URL string or None if not found.
+        """
+        # If metadata not provided, try to fetch it
+        if event_metadata is None and event_ticker:
+            event_metadata = self._fetch_event_metadata(event_ticker)
+        
+        if not event_metadata:
+            return None
+        
+        # First, try to find market-specific image_url in market_details
+        market_details = event_metadata.get('market_details', [])
+        if market_details:
+            for market_detail in market_details:
+                if market_detail.get('market_ticker') == market_ticker:
+                    image_url = market_detail.get('image_url')
+                    if image_url:
+                        return image_url
+        
+        # Fall back to event-level image URLs
+        # Prefer featured_image_url if available, otherwise image_url
+        return event_metadata.get('featured_image_url') or event_metadata.get('image_url')
+    
+    def _normalize_market(self, market_data: dict, event_metadata: Optional[dict] = None, fetch_image_urls: bool = False) -> Market:
         """Normalize Kalshi market data to the common Market model.
         
         Args:
@@ -439,6 +546,7 @@ class KalshiClient(ExchangeClient):
         # Extract metadata
         # Kalshi doesn't have tags, category, or subcategory in standard format
         # Store all Kalshi-specific fields in extra
+        # Note: image_url is not stored in the database - will be fetched later for matching pairs
         metadata = MarketMetadata(
             resolve_date=resolve_date,
             resolve_time=resolve_time,
@@ -446,7 +554,7 @@ class KalshiClient(ExchangeClient):
             subcategory=None,  # Kalshi doesn't provide subcategory
             tags=None,  # Kalshi doesn't provide tags
             description=market_data.get('description') or market_data.get('subtitle'),
-            image_url=None,  # Kalshi doesn't provide image URLs
+            image_url=None,  # Not stored in database - will be fetched later for matching pairs
             liquidity=None,  # Kalshi doesn't expose liquidity
             volume=market_data.get('volume') or market_data.get('volume_24h') or market_data.get('total_volume'),
             extra={

@@ -547,14 +547,7 @@ class PolymarketClient(ExchangeClient):
             subcategory=merged_data.get('subcategory') or market_data.get('subcategory'),
             tags=tags_list,
             description=merged_data.get('description') or market_data.get('description') or merged_data.get('subtitle'),
-            image_url=(
-                merged_data.get('image') or
-                merged_data.get('icon') or
-                merged_data.get('imageUrl') or
-                merged_data.get('image_url') or
-                market_data.get('image') or
-                market_data.get('icon')
-            ),
+            image_url=None,  # Not stored in database - will be fetched later for matching pairs
             liquidity=liquidity,
             volume=(
                 merged_data.get('volume') or
