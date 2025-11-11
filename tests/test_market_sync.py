@@ -58,8 +58,9 @@ def test_sync_markets_new_market(mock_db_client, sample_market):
     # Mock garbage collector
     with patch('engine.market_sync.GarbageCollector') as mock_gc_class:
         mock_gc = Mock()
-        mock_gc.filter_expired.return_value = ([sample_market], [])
-        mock_gc.cleanup_database.return_value = 0
+        mock_gc.filter_bad_markets.return_value = ([sample_market], [])  # (valid, bad)
+        mock_gc.filter_expired.return_value = ([sample_market], [])  # (active, expired)
+        mock_gc.cleanup_database.return_value = {'expired_marked': 0, 'bad_deleted': 0}
         mock_gc_class.return_value = mock_gc
         
         # Mock poller
@@ -94,8 +95,9 @@ def test_sync_markets_unchanged_market(mock_db_client, sample_market):
     # Mock garbage collector
     with patch('engine.market_sync.GarbageCollector') as mock_gc_class:
         mock_gc = Mock()
-        mock_gc.filter_expired.return_value = ([sample_market], [])
-        mock_gc.cleanup_database.return_value = 0
+        mock_gc.filter_bad_markets.return_value = ([sample_market], [])  # (valid, bad)
+        mock_gc.filter_expired.return_value = ([sample_market], [])  # (active, expired)
+        mock_gc.cleanup_database.return_value = {'expired_marked': 0, 'bad_deleted': 0}
         mock_gc_class.return_value = mock_gc
         
         # Mock poller
@@ -131,8 +133,9 @@ def test_sync_markets_changed_market(mock_db_client, sample_market):
     # Mock garbage collector
     with patch('engine.market_sync.GarbageCollector') as mock_gc_class:
         mock_gc = Mock()
-        mock_gc.filter_expired.return_value = ([sample_market], [])
-        mock_gc.cleanup_database.return_value = 0
+        mock_gc.filter_bad_markets.return_value = ([sample_market], [])  # (valid, bad)
+        mock_gc.filter_expired.return_value = ([sample_market], [])  # (active, expired)
+        mock_gc.cleanup_database.return_value = {'expired_marked': 0, 'bad_deleted': 0}
         mock_gc_class.return_value = mock_gc
         
         # Mock poller
@@ -172,8 +175,9 @@ def test_sync_markets_filters_expired(mock_db_client, sample_market):
     # Mock garbage collector to filter expired
     with patch('engine.market_sync.GarbageCollector') as mock_gc_class:
         mock_gc = Mock()
+        mock_gc.filter_bad_markets.return_value = ([expired_market], [])  # (valid, bad)
         mock_gc.filter_expired.return_value = ([], [expired_market])  # All expired
-        mock_gc.cleanup_database.return_value = 0
+        mock_gc.cleanup_database.return_value = {'expired_marked': 0, 'bad_deleted': 0}
         mock_gc_class.return_value = mock_gc
         
         # Mock poller

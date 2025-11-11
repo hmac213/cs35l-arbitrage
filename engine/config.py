@@ -30,6 +30,18 @@ class EngineConfig:
     # Progress callback settings
     PROGRESS_CALLBACK_INTERVAL: int = int(os.getenv('PROGRESS_CALLBACK_INTERVAL', '50'))  # Call every N markets
     
+    # Vector DB settings (using pgvector in Supabase via RPC)
+    # No additional config needed - uses SUPABASE_URL and SUPABASE_KEY
+    
+    # OpenAI settings
+    OPENAI_API_KEY: Optional[str] = os.getenv('OPENAI_API_KEY')
+    OPENAI_MODEL: str = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+    EMBEDDING_MODEL: str = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
+    
+    # Similarity settings
+    SIMILARITY_THRESHOLD: float = float(os.getenv('SIMILARITY_THRESHOLD', '0.8'))
+    LLM_VERIFICATION_ENABLED: bool = os.getenv('LLM_VERIFICATION_ENABLED', 'true').lower() == 'true'
+    
     @classmethod
     def get_market_poll_interval(cls) -> int:
         """Get market polling interval in seconds."""

@@ -12,6 +12,7 @@ from .market_poller import MarketPoller
 from .garbage_collector import GarbageCollector
 from .validators import compare_markets
 from .errors import SyncError, MarketValidationError
+from .market_similarity import MarketSimilarityService
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,8 @@ class MarketSyncService:
         self,
         db_client: SupabaseClient,
         kalshi_client: Optional[KalshiClient] = None,
-        polymarket_client: Optional[PolymarketClient] = None
+        polymarket_client: Optional[PolymarketClient] = None,
+        similarity_service: Optional[MarketSimilarityService] = None
     ):
         """Initialize the market sync service.
         
@@ -31,10 +33,12 @@ class MarketSyncService:
             db_client: Supabase client instance.
             kalshi_client: Optional Kalshi client instance.
             polymarket_client: Optional Polymarket client instance.
+            similarity_service: Optional MarketSimilarityService instance.
         """
         self.db_client = db_client
         self.poller = MarketPoller(kalshi_client, polymarket_client)
         self.garbage_collector = GarbageCollector()
+        self.similarity_service = similarity_service
     
     def sync_markets(self) -> Dict[str, int]:
         """Run the full market synchronization pipeline.
@@ -49,6 +53,8 @@ class MarketSyncService:
             - 'polymarket_skipped': Number of unchanged Polymarket markets
             - 'expired_marked': Number of expired markets marked
             - 'bad_deleted': Number of bad markets deleted
+            - 'pairs_created': Number of market pairs created (if similarity service enabled)
+            - 'pairs_verified': Number of pairs verified by LLM (if similarity service enabled)
         """
         stats = {
             'kalshi_added': 0,
@@ -59,6 +65,8 @@ class MarketSyncService:
             'polymarket_skipped': 0,
             'expired_marked': 0,
             'bad_deleted': 0,
+            'pairs_created': 0,
+            'pairs_verified': 0,
         }
         
         logger.info("Starting market synchronization...")
@@ -86,6 +94,15 @@ class MarketSyncService:
             cleanup_results = self.garbage_collector.cleanup_database(self.db_client)
             stats['expired_marked'] = cleanup_results.get('expired_marked', 0)
             stats['bad_deleted'] = cleanup_results.get('bad_deleted', 0)
+            
+            # Step 4: Process verification queue if similarity service is enabled
+            if self.similarity_service:
+                queue_stats = self.similarity_service.verification_queue.process_queue(
+                    self.db_client,
+                    self.similarity_service
+                )
+                stats['pairs_verified'] = queue_stats.get('verified', 0)
+                stats['pairs_created'] = queue_stats.get('verified', 0)  # Same as verified since pairs are created on verification
             
             logger.info(f"Market synchronization complete. Stats: {stats}")
             return stats
@@ -143,6 +160,7 @@ class MarketSyncService:
         # Step 4: Process each active market
         now = datetime.now(timezone.utc)
         markets_to_upsert = []
+        new_market_ids = set()  # Track which markets are new for similarity processing
         
         for market in active_markets:
             try:
@@ -172,6 +190,7 @@ class MarketSyncService:
                 else:
                     # New market - add
                     stats[f'{exchange_name}_added'] += 1
+                    new_market_ids.add(market.market_id)
                     logger.debug(
                         f"Adding new market {market.market_id} ({exchange_name})"
                     )
@@ -192,18 +211,50 @@ class MarketSyncService:
                 continue
         
         # Step 5: Batch upsert markets
+        new_markets = []  # Track newly added markets for similarity processing
         if markets_to_upsert:
             try:
-                self.db_client.upsert_markets(markets_to_upsert)
+                # Upsert markets and get results with IDs
+                results = self.db_client.upsert_markets(markets_to_upsert)
                 logger.info(
                     f"Upserted {len(markets_to_upsert)} markets from {exchange_name}"
                 )
+                
+                # Identify newly added markets (those that didn't exist before)
+                # Create a mapping of market_id to result for easier lookup
+                result_by_market_id = {}
+                for result in results:
+                    if isinstance(result, dict) and result.get('market_id'):
+                        result_by_market_id[result['market_id']] = result
+                
+                # Fetch new markets that were just added
+                for market_id in new_market_ids:
+                    if market_id in result_by_market_id:
+                        result_dict = result_by_market_id[market_id]
+                        if result_dict.get('id'):
+                            new_db_market = DatabaseMarket.from_dict(result_dict)
+                            new_markets.append(new_db_market)
+                
             except Exception as e:
                 logger.error(
                     f"Failed to upsert markets from {exchange_name}: {e}",
                     exc_info=True
                 )
                 raise SyncError(f"Failed to upsert markets from {exchange_name}") from e
+        
+        # Step 6: Process new markets through similarity service
+        if self.similarity_service and new_markets:
+            logger.info(f"Processing {len(new_markets)} new markets through similarity service...")
+            for new_market in new_markets:
+                try:
+                    self.similarity_service.process_new_market(new_market)
+                except Exception as e:
+                    logger.warning(
+                        f"Error processing market {new_market.market_id} through similarity service: {e}",
+                        exc_info=True
+                    )
+                    # Don't fail the entire sync if similarity processing fails
+                    continue
         
         added_key = f'{exchange_name}_added'
         updated_key = f'{exchange_name}_updated'
