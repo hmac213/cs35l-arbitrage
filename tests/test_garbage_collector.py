@@ -214,3 +214,51 @@ def test_filter_bad_markets_short_name(garbage_collector):
     assert valid[0].market_id == 'VALID-123'
     assert bad[0].market_id == 'SHORT-123'
 
+
+def test_filter_bad_markets_empty_rules(garbage_collector):
+    """Test filtering of markets with empty or null rules."""
+    valid_market = Market(
+        market_id='VALID-123',
+        name='Valid Market Name',
+        rules='These are the rules',
+        metadata=MarketMetadata(),
+        exchange='kalshi'
+    )
+    
+    empty_rules_market = Market(
+        market_id='EMPTY-RULES-123',
+        name='Market with Empty Rules',
+        rules='',
+        metadata=MarketMetadata(),
+        exchange='kalshi'
+    )
+    
+    null_rules_market = Market(
+        market_id='NULL-RULES-123',
+        name='Market with Null Rules',
+        rules=None,
+        metadata=MarketMetadata(),
+        exchange='polymarket'
+    )
+    
+    whitespace_rules_market = Market(
+        market_id='WHITESPACE-RULES-123',
+        name='Market with Whitespace Rules',
+        rules='   ',
+        metadata=MarketMetadata(),
+        exchange='polymarket'
+    )
+    
+    valid, bad = garbage_collector.filter_bad_markets([
+        valid_market,
+        empty_rules_market,
+        null_rules_market,
+        whitespace_rules_market
+    ])
+    
+    assert len(valid) == 1
+    assert len(bad) == 3
+    assert valid[0].market_id == 'VALID-123'
+    assert all(m.market_id in ['EMPTY-RULES-123', 'NULL-RULES-123', 'WHITESPACE-RULES-123'] 
+               for m in bad)
+
