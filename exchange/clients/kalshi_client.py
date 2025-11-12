@@ -2,6 +2,7 @@
 
 import os
 import logging
+import requests
 from typing import List, Optional, Callable
 from datetime import datetime
 
@@ -111,6 +112,7 @@ class KalshiClient(ExchangeClient):
         page_num = 0
         current_cursor = cursor
         total_fetched = 0
+        seen_cursors = set()  # Track cursors to detect infinite loops
         
         try:
             while True:
@@ -122,40 +124,71 @@ class KalshiClient(ExchangeClient):
                 if max_pages and page_num >= max_pages:
                     break
                 
+                # Safety check: detect if we're stuck in a loop (same cursor twice)
+                if current_cursor and current_cursor in seen_cursors:
+                    logger.warning(f"Detected duplicate cursor {current_cursor}, stopping pagination to prevent infinite loop")
+                    break
+                if current_cursor:
+                    seen_cursors.add(current_cursor)
+                
                 # Rate limit before request
                 self.rate_limiter.wait_if_needed()
                 
                 # Calculate how many to request this page
-                page_limit = None
+                # Default page size if not specified (Kalshi API default is typically 100)
+                default_page_size = page_size or 100
+                
                 if limit:
                     remaining = limit - total_fetched
-                    if page_size:
-                        page_limit = min(remaining, page_size)
-                    else:
-                        page_limit = remaining
-                elif page_size:
-                    page_limit = page_size
+                    if remaining <= 0:
+                        break  # Already fetched enough
+                    page_limit = min(remaining, default_page_size)
+                else:
+                    page_limit = default_page_size
                 
                 try:
-                    # Use SDK method to get markets
-                    response = self.sdk_client.get_markets(
-                        limit=page_limit,
-                        cursor=current_cursor
-                    )
+                    # Use REST API directly to get markets (SDK doesn't include rules_primary/rules_secondary)
+                    import requests
+                    url = f"{self.host}/markets"
+                    params = {
+                        "status": "open",  # Only fetch open markets
+                        "mve_filter": "exclude"  # Exclude multivariate events
+                    }
+                    # Only add limit if we have a specific limit to enforce
+                    if page_limit is not None:
+                        params["limit"] = page_limit
+                    if current_cursor:
+                        params["cursor"] = current_cursor
                     
+                    self.rate_limiter.wait_if_needed()
+                    response_obj = requests.get(url, params=params, timeout=30)
+                    
+                    # Handle rate limit errors
+                    if response_obj.status_code == 429:
+                        logger.warning(f"Rate limit hit on page {page_num}, backing off...")
+                        self.rate_limiter.handle_rate_limit_error()
+                        self.rate_limiter.wait_if_needed()
+                        response_obj = requests.get(url, params=params, timeout=30)
+                    
+                    response_obj.raise_for_status()
                     self.rate_limiter.record_request()
                     self.rate_limiter.reset_delay()
                     
+                    response_data = response_obj.json()
+                    
                     page_markets = []
                     
-                    # SDK returns a MarketsResponse object with markets attribute
-                    if hasattr(response, 'markets') and response.markets:
-                        for market_raw in response.markets:
-                            # Convert SDK model to dict for normalization
-                            market_dict = self._sdk_model_to_dict(market_raw)
+                    # Extract markets from response
+                    markets_list = response_data.get('markets', [])
+                    if markets_list:
+                        for market_dict in markets_list:
+                            # market_dict is already a dict from REST API, includes rules_primary/rules_secondary
                             market = self._normalize_market(market_dict, fetch_image_urls=fetch_image_urls)
                             if market:
                                 page_markets.append(market)
+                    
+                    # Get cursor for next page
+                    next_cursor = response_data.get('cursor')
                     
                     all_markets.extend(page_markets)
                     total_fetched = len(all_markets)
@@ -165,24 +198,23 @@ class KalshiClient(ExchangeClient):
                     if progress_callback:
                         progress_callback(page_num, total_fetched)
                     
-                    # Check for next cursor
-                    next_cursor = None
-                    if hasattr(response, 'cursor'):
-                        next_cursor = response.cursor
-                    elif hasattr(response, 'next_cursor'):
-                        next_cursor = response.next_cursor
-                    
                     # If no more pages or no markets returned, break
                     if not next_cursor or not page_markets:
+                        logger.info(f"No more pages (cursor: {next_cursor}, markets: {len(page_markets)}), stopping pagination")
+                        break
+                    
+                    # Check if cursor changed (safety check)
+                    if next_cursor == current_cursor:
+                        logger.warning(f"Cursor did not change ({current_cursor}), stopping pagination to prevent infinite loop")
                         break
                     
                     current_cursor = next_cursor
                     
-                    logger.info(f"Fetched page {page_num}: {len(page_markets)} markets (total: {total_fetched})")
+                    logger.info(f"Fetched page {page_num}: {len(page_markets)} markets (total: {total_fetched}, next_cursor: {next_cursor[:20] if next_cursor else None}...)")
                     
-                except ApiException as e:
+                except requests.exceptions.HTTPError as e:
                     # Check if it's a rate limit error (429)
-                    if hasattr(e, 'status') and e.status == 429:
+                    if hasattr(e.response, 'status_code') and e.response.status_code == 429:
                         logger.warning(f"Rate limit hit on page {page_num}, backing off...")
                         self.rate_limiter.handle_rate_limit_error()
                         self.rate_limiter.wait_if_needed()
@@ -195,6 +227,13 @@ class KalshiClient(ExchangeClient):
                             break
                         else:
                             raise KalshiAPIError(f"Kalshi API error: {str(e)}") from e
+                except requests.exceptions.RequestException as e:
+                    logger.warning(f"Request error on page {page_num}: {str(e)}")
+                    if all_markets:
+                        logger.info(f"Returning {len(all_markets)} markets fetched so far")
+                        break
+                    else:
+                        raise KalshiAPIError(f"Kalshi API request failed: {str(e)}") from e
                 
         except Exception as e:
             if all_markets:
@@ -504,20 +543,25 @@ class KalshiClient(ExchangeClient):
         
         # Extract rules - Kalshi has rules_primary and rules_secondary that should be combined
         rules_parts = []
-        if market_data.get('rules_primary'):
-            rules_parts.append(str(market_data.get('rules_primary')))
-        if market_data.get('rules_secondary'):
-            rules_parts.append(str(market_data.get('rules_secondary')))
+        rules_primary = market_data.get('rules_primary')
+        rules_secondary = market_data.get('rules_secondary')
+        
+        # Handle empty strings as well as None
+        if rules_primary and str(rules_primary).strip():
+            rules_parts.append(str(rules_primary).strip())
+        if rules_secondary and str(rules_secondary).strip():
+            rules_parts.append(str(rules_secondary).strip())
         
         # Combine rules_primary and rules_secondary, or fall back to other fields
         if rules_parts:
-            rules = '\n\n'.join(rules_parts)  # Join with double newline for readability
+            rules = '\n\n'.join([r for r in rules_parts if r])  # Join with double newline, filter empty
         else:
+            # Fall back to other fields
             rules = (
                 market_data.get('rules') or
                 market_data.get('subtitle') or
                 market_data.get('description') or
-                ''
+                None  # Return None instead of empty string if not available
             )
         
         # Extract expiration/resolution time
@@ -532,15 +576,36 @@ class KalshiClient(ExchangeClient):
         
         if resolution_datetime:
             try:
-                if isinstance(resolution_datetime, str):
-                    dt = datetime.fromisoformat(resolution_datetime.replace('Z', '+00:00'))
+                # Handle datetime objects directly
+                if isinstance(resolution_datetime, datetime):
+                    dt = resolution_datetime
+                    # Remove timezone info for date/time extraction
+                    if dt.tzinfo:
+                        dt = dt.replace(tzinfo=None)
+                    resolve_date = dt.strftime('%Y-%m-%d')
+                    resolve_time = dt.strftime('%H:%M:%S')
+                elif isinstance(resolution_datetime, str):
+                    # Handle various datetime string formats
+                    # Format: "2025-12-14 18:00:00+00:00" or "2025-12-14T18:00:00Z" etc.
+                    dt_str = resolution_datetime.replace('Z', '+00:00')
+                    # Try parsing with timezone first
+                    try:
+                        dt = datetime.fromisoformat(dt_str)
+                    except ValueError:
+                        # Try parsing without timezone
+                        dt_str_no_tz = dt_str.split('+')[0].split('-')[0] if '+' in dt_str else dt_str
+                        dt = datetime.strptime(dt_str_no_tz, '%Y-%m-%d %H:%M:%S')
+                    
+                    if dt.tzinfo:
+                        dt = dt.replace(tzinfo=None)
                     resolve_date = dt.strftime('%Y-%m-%d')
                     resolve_time = dt.strftime('%H:%M:%S')
                 elif isinstance(resolution_datetime, (int, float)):
                     dt = datetime.fromtimestamp(resolution_datetime)
                     resolve_date = dt.strftime('%Y-%m-%d')
                     resolve_time = dt.strftime('%H:%M:%S')
-            except (ValueError, TypeError, OSError):
+            except (ValueError, TypeError, OSError, AttributeError) as e:
+                logger.debug(f"Failed to parse resolution datetime {resolution_datetime}: {e}")
                 pass
         
         # Extract metadata
@@ -550,10 +615,10 @@ class KalshiClient(ExchangeClient):
         metadata = MarketMetadata(
             resolve_date=resolve_date,
             resolve_time=resolve_time,
-            category=None,  # Kalshi doesn't provide category
+            category=market_data.get('category') or None,  # Kalshi provides category in REST API
             subcategory=None,  # Kalshi doesn't provide subcategory
             tags=None,  # Kalshi doesn't provide tags
-            description=market_data.get('description') or market_data.get('subtitle'),
+            description=market_data.get('description') or market_data.get('subtitle') or None,
             image_url=None,  # Not stored in database - will be fetched later for matching pairs
             liquidity=None,  # Kalshi doesn't expose liquidity
             volume=market_data.get('volume') or market_data.get('volume_24h') or market_data.get('total_volume'),
