@@ -1,9 +1,12 @@
 """Queue system for async LLM verification of market pairs."""
 
+import asyncio
 import logging
 from typing import List, Dict, Optional, NamedTuple
 from dataclasses import dataclass
 from threading import Lock
+
+from .config import EngineConfig
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +58,9 @@ class VerificationQueue:
             self._queue.append(task)
         
         logger.debug(
-            f"Enqueued verification task: {market1_id} ({market1_exchange}) vs "
-            f"{market2_id} ({market2_exchange}), score: {similarity_score}"
+            f"[QUEUE] Enqueued verification task: {market1_id} ({market1_exchange}) vs "
+            f"{market2_id} ({market2_exchange}), score: {similarity_score:.4f} "
+            f"(queue size: {len(self._queue)})"
         )
     
     def dequeue(self) -> Optional[VerificationTask]:
@@ -85,12 +89,12 @@ class VerificationQueue:
             self._queue.clear()
         logger.debug("Cleared verification queue")
     
-    def process_queue(
+    async def process_queue(
         self,
         db_client,
         similarity_service
     ) -> Dict[str, int]:
-        """Process all queued verification tasks.
+        """Process all queued verification tasks in parallel batches (async).
         
         Args:
             db_client: SupabaseClient instance.
@@ -105,50 +109,104 @@ class VerificationQueue:
             'failed': 0
         }
         
-        logger.info(f"Processing verification queue ({self.size()} tasks)...")
+        queue_size = self.size()
+        logger.info(f"[QUEUE] Processing verification queue ({queue_size} tasks) in parallel batches...")
         
+        if queue_size == 0:
+            logger.info(f"[QUEUE] Queue is empty, nothing to process")
+            return stats
+        
+        # Get all tasks at once
+        tasks = []
         while True:
             task = self.dequeue()
             if task is None:
                 break
+            tasks.append(task)
+        
+        batch_size = EngineConfig.ASYNC_VERIFICATION_BATCH_SIZE
+        total_batches = (len(tasks) + batch_size - 1) // batch_size
+        
+        logger.info(f"[QUEUE] Processing {len(tasks)} tasks in {total_batches} batches of {batch_size}")
+        
+        async def process_single_task(task: VerificationTask, task_idx: int) -> Dict[str, int]:
+            """Process a single verification task."""
+            task_stats = {'processed': 0, 'verified': 0, 'failed': 0}
             
             try:
                 # Fetch markets from database
+                logger.debug(f"[QUEUE] Task {task_idx+1}: Fetching markets from database...")
                 market1 = db_client.get_market(task.market1_id, task.market1_exchange)
                 market2 = db_client.get_market(task.market2_id, task.market2_exchange)
                 
                 if not market1 or not market2:
                     logger.warning(
-                        f"Could not find markets for verification: "
+                        f"[QUEUE] ✗ Task {task_idx+1}: Could not find markets for verification: "
                         f"{task.market1_id} or {task.market2_id}"
                     )
-                    stats['failed'] += 1
-                    continue
+                    task_stats['failed'] = 1
+                    task_stats['processed'] = 1
+                    return task_stats
                 
-                # Verify and create pair
-                pair = similarity_service.verify_and_create_pair(
+                logger.debug(f"[QUEUE] Task {task_idx+1}: Found both markets, verifying...")
+                # Verify and create pair (async)
+                pair = await similarity_service.verify_and_create_pair(
                     market1,
                     market2,
                     task.similarity_score
                 )
                 
                 if pair:
-                    stats['verified'] += 1
+                    task_stats['verified'] = 1
+                    logger.info(f"[QUEUE] ✓ Task {task_idx+1} verified and pair created")
                 else:
-                    stats['failed'] += 1
+                    task_stats['failed'] = 1
+                    logger.info(f"[QUEUE] ✗ Task {task_idx+1} not verified (markets not identical)")
                 
-                stats['processed'] += 1
+                task_stats['processed'] = 1
                 
             except Exception as e:
                 logger.error(
-                    f"Error processing verification task: {e}",
+                    f"[QUEUE] ✗ Error processing verification task {task_idx+1}: {e}",
                     exc_info=True
                 )
-                stats['failed'] += 1
-                stats['processed'] += 1
+                task_stats['failed'] = 1
+                task_stats['processed'] = 1
+            
+            return task_stats
+        
+        # Process tasks in batches
+        for batch_idx in range(total_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, len(tasks))
+            batch = tasks[start_idx:end_idx]
+            
+            logger.info(f"[QUEUE] Processing batch {batch_idx+1}/{total_batches} ({len(batch)} tasks)...")
+            
+            # Process batch in parallel
+            batch_results = await asyncio.gather(
+                *[process_single_task(task, start_idx + i) for i, task in enumerate(batch)],
+                return_exceptions=True
+            )
+            
+            # Aggregate stats
+            for result in batch_results:
+                if isinstance(result, Exception):
+                    logger.error(f"[QUEUE] Batch task raised exception: {result}", exc_info=True)
+                    stats['failed'] += 1
+                    stats['processed'] += 1
+                else:
+                    stats['processed'] += result.get('processed', 0)
+                    stats['verified'] += result.get('verified', 0)
+                    stats['failed'] += result.get('failed', 0)
+            
+            logger.info(
+                f"[QUEUE] Batch {batch_idx+1}/{total_batches} complete: "
+                f"{stats['processed']} processed, {stats['verified']} verified, {stats['failed']} failed"
+            )
         
         logger.info(
-            f"Verification queue processing complete: "
+            f"[QUEUE] ✓ Verification queue processing complete: "
             f"{stats['processed']} processed, {stats['verified']} verified, {stats['failed']} failed"
         )
         

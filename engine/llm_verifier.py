@@ -1,8 +1,9 @@
 """LLM verification service for market matching using OpenAI GPT."""
 
+import os
 import logging
 from typing import Dict, Optional, Any
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 from db.models import DatabaseMarket
 from .config import EngineConfig
@@ -22,18 +23,20 @@ class LLMVerifier:
         """Initialize LLM verifier.
         
         Args:
-            api_key: OpenAI API key. If None, reads from config.
+            api_key: OpenAI API key. If None, reads from config or environment.
             model: OpenAI model name. If None, reads from config.
         """
-        self.api_key = api_key or EngineConfig.OPENAI_API_KEY
+        # Try parameter first, then config, then direct env var (in case .env wasn't loaded when config was imported)
+        self.api_key = api_key or EngineConfig.OPENAI_API_KEY or os.getenv('OPENAI_API_KEY')
         self.model = model or EngineConfig.OPENAI_MODEL
         
         if not self.api_key:
             raise LLMVerificationError("OpenAI API key is required. Set OPENAI_API_KEY environment variable.")
         
-        self.client = OpenAI(api_key=self.api_key)
+        self.client = AsyncOpenAI(api_key=self.api_key)
+        logger.info(f"[LLM] Initialized LLM verifier with model: {self.model} (async)")
     
-    def verify_markets_identical(
+    async def verify_markets_identical(
         self,
         market1: DatabaseMarket,
         market2: DatabaseMarket
@@ -104,7 +107,11 @@ Respond with a clear yes or no answer using the provided function."""
         ]
         
         try:
-            response = self.client.chat.completions.create(
+            logger.info(f"[LLM] Calling OpenAI API (model: {self.model}) to verify markets...")
+            logger.debug(f"[LLM] Market 1: {market1.market_id} ({market1.exchange}) - {market1.name}")
+            logger.debug(f"[LLM] Market 2: {market2.market_id} ({market2.exchange}) - {market2.name}")
+            
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are an expert at analyzing prediction markets. Always use the verify_market_match function to respond."},
@@ -114,6 +121,8 @@ Respond with a clear yes or no answer using the provided function."""
                 tool_choice={"type": "function", "function": {"name": "verify_market_match"}},
                 temperature=0.1  # Low temperature for more deterministic results
             )
+            
+            logger.debug(f"[LLM] Received response from OpenAI API")
             
             # Extract function call result
             message = response.choices[0].message
@@ -129,13 +138,17 @@ Respond with a clear yes or no answer using the provided function."""
                     "reasoning": arguments.get("reasoning", "")
                 }
                 
-                logger.debug(
-                    f"LLM verification: markets {market1.market_id} and {market2.market_id} - "
-                    f"identical: {result['is_identical']}, confidence: {result['confidence']}"
+                logger.info(
+                    f"[LLM] ✓ Verification complete: markets {market1.market_id} and {market2.market_id} - "
+                    f"identical: {result['is_identical']}, confidence: {result['confidence']:.4f}"
                 )
+                
+                if result.get('reasoning'):
+                    logger.debug(f"[LLM] Reasoning: {result['reasoning']}")
                 
                 return result
             else:
+                logger.error(f"[LLM] ✗ LLM did not return a function call response")
                 raise LLMVerificationError("LLM did not return a function call response")
                 
         except Exception as e:

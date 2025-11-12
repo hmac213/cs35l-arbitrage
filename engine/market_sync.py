@@ -1,5 +1,6 @@
 """Market synchronization service that orchestrates polling, garbage collection, and database updates."""
 
+import asyncio
 import logging
 from typing import List, Dict, Optional
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ from .garbage_collector import GarbageCollector
 from .validators import compare_markets
 from .errors import SyncError, MarketValidationError
 from .market_similarity import MarketSimilarityService
+from .config import EngineConfig
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,11 @@ class MarketSyncService:
         self.poller = MarketPoller(kalshi_client, polymarket_client)
         self.garbage_collector = GarbageCollector()
         self.similarity_service = similarity_service
+        
+        if self.similarity_service:
+            logger.info("[SIMILARITY] Similarity service is enabled and will process markets")
+        else:
+            logger.info("[SIMILARITY] Similarity service is not enabled")
     
     def sync_markets(self) -> Dict[str, int]:
         """Run the full market synchronization pipeline.
@@ -95,14 +102,18 @@ class MarketSyncService:
             stats['expired_marked'] = cleanup_results.get('expired_marked', 0)
             stats['bad_deleted'] = cleanup_results.get('bad_deleted', 0)
             
-            # Step 4: Process verification queue if similarity service is enabled
+            # Step 4: Process verification queue if similarity service is enabled (async)
             if self.similarity_service:
-                queue_stats = self.similarity_service.verification_queue.process_queue(
-                    self.db_client,
-                    self.similarity_service
+                logger.info("[QUEUE] Processing verification queue...")
+                queue_stats = asyncio.run(
+                    self.similarity_service.verification_queue.process_queue(
+                        self.db_client,
+                        self.similarity_service
+                    )
                 )
                 stats['pairs_verified'] = queue_stats.get('verified', 0)
                 stats['pairs_created'] = queue_stats.get('verified', 0)  # Same as verified since pairs are created on verification
+                logger.info(f"[QUEUE] ✓ Queue processing complete: {stats['pairs_verified']} pairs created")
             
             logger.info(f"Market synchronization complete. Stats: {stats}")
             return stats
@@ -228,12 +239,20 @@ class MarketSyncService:
                         result_by_market_id[result['market_id']] = result
                 
                 # Fetch new markets that were just added
+                logger.debug(f"[SIMILARITY] Looking for {len(new_market_ids)} new markets in upsert results...")
                 for market_id in new_market_ids:
                     if market_id in result_by_market_id:
                         result_dict = result_by_market_id[market_id]
                         if result_dict.get('id'):
                             new_db_market = DatabaseMarket.from_dict(result_dict)
                             new_markets.append(new_db_market)
+                            logger.debug(f"[SIMILARITY] Found new market in results: {market_id} (id: {result_dict.get('id')})")
+                        else:
+                            logger.warning(f"[SIMILARITY] Market {market_id} in results but missing 'id' field")
+                    else:
+                        logger.warning(f"[SIMILARITY] Market {market_id} not found in upsert results")
+                
+                logger.info(f"[SIMILARITY] Identified {len(new_markets)} new markets from {len(new_market_ids)} tracked new market IDs")
                 
             except Exception as e:
                 logger.error(
@@ -243,18 +262,109 @@ class MarketSyncService:
                 raise SyncError(f"Failed to upsert markets from {exchange_name}") from e
         
         # Step 6: Process new markets through similarity service
-        if self.similarity_service and new_markets:
-            logger.info(f"Processing {len(new_markets)} new markets through similarity service...")
-            for new_market in new_markets:
-                try:
-                    self.similarity_service.process_new_market(new_market)
-                except Exception as e:
-                    logger.warning(
-                        f"Error processing market {new_market.market_id} through similarity service: {e}",
-                        exc_info=True
+        # Also process existing markets that don't have embeddings yet
+        if not self.similarity_service:
+            logger.info(f"[SIMILARITY] Similarity service not initialized, skipping")
+        else:
+            markets_to_process = []
+            
+            # Add new markets (these already have IDs from the upsert results)
+            markets_to_process.extend(new_markets)
+            logger.info(f"[SIMILARITY] Found {len(new_markets)} new markets to process")
+            
+            # Also check existing markets that might not have embeddings
+            # Use the upsert results to get markets with IDs, avoiding individual DB queries
+            if markets_to_upsert:
+                logger.info(f"[SIMILARITY] Checking {len(markets_to_upsert)} upserted markets for missing embeddings...")
+                
+                # Get markets with IDs from upsert results (already fetched above)
+                # Create a set of new market IDs for quick lookup
+                new_market_ids_set = {m.market_id for m in new_markets}
+                
+                # Use existing_by_id to get markets that were updated (not new)
+                # These already have database IDs from the earlier fetch
+                markets_with_ids = []
+                for market in markets_to_upsert:
+                    # Skip if it's a new market (already in new_markets)
+                    if market.market_id in new_market_ids_set:
+                        continue
+                    
+                    # Get from existing_by_id (already fetched, has ID)
+                    existing_market = existing_by_id.get(market.market_id)
+                    if existing_market and existing_market.id:
+                        markets_with_ids.append(existing_market)
+                
+                logger.debug(f"[SIMILARITY] Retrieved {len(markets_with_ids)} existing markets with IDs (from cache)")
+                
+                # Batch check which ones need embeddings (much faster than individual queries)
+                if markets_with_ids:
+                    logger.info(f"[SIMILARITY] Batch checking {len(markets_with_ids)} markets for embeddings...")
+                    # Run async batch check
+                    has_embeddings_map = asyncio.run(
+                        self.similarity_service.vector_store.batch_has_embeddings(markets_with_ids)
                     )
-                    # Don't fail the entire sync if similarity processing fails
-                    continue
+                    
+                    for market in markets_with_ids:
+                        if not has_embeddings_map.get(market.market_id, False):
+                            logger.info(f"[SIMILARITY] Market {market.market_id} ({market.exchange}) missing embedding, will process")
+                            markets_to_process.append(market)
+            
+            if markets_to_process:
+                logger.info(f"[SIMILARITY] Processing {len(markets_to_process)} markets through similarity service "
+                           f"({len(new_markets)} new, {len(markets_to_process) - len(new_markets)} missing embeddings) in parallel batches...")
+                
+                # Process markets in parallel batches using a single async context
+                batch_size = EngineConfig.ASYNC_BATCH_SIZE
+                total_batches = (len(markets_to_process) + batch_size - 1) // batch_size
+                
+                async def process_all_markets() -> None:
+                    """Process all markets in parallel batches within a single async context."""
+                    async def process_market_batch(batch: List[DatabaseMarket], batch_idx: int) -> None:
+                        """Process a batch of markets in parallel."""
+                        logger.info(f"[SIMILARITY] Processing batch {batch_idx+1}/{total_batches} ({len(batch)} markets)...")
+                        
+                        tasks = []
+                        for idx, market in enumerate(batch):
+                            market_idx = batch_idx * batch_size + idx + 1
+                            logger.debug(f"[SIMILARITY] Queuing market {market_idx}/{len(markets_to_process)}: "
+                                       f"{market.market_id} ({market.exchange})")
+                            tasks.append(self.similarity_service.process_new_market(market))
+                        
+                        # Process batch in parallel
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
+                        
+                        # Log results
+                        success_count = sum(1 for r in results if not isinstance(r, Exception))
+                        error_count = sum(1 for r in results if isinstance(r, Exception))
+                        
+                        if error_count > 0:
+                            logger.warning(f"[SIMILARITY] Batch {batch_idx+1} completed with {error_count} errors")
+                            for idx, result in enumerate(results):
+                                if isinstance(result, Exception):
+                                    market = batch[idx]
+                                    logger.warning(
+                                        f"[SIMILARITY] ✗ Error processing market {market.market_id}: {result}",
+                                        exc_info=True
+                                    )
+                        else:
+                            logger.info(f"[SIMILARITY] Batch {batch_idx+1} completed successfully ({success_count} markets)")
+                    
+                    # Process all batches sequentially (but each batch processes markets in parallel)
+                    # This prevents overwhelming the API with too many concurrent requests
+                    for batch_idx in range(total_batches):
+                        start_idx = batch_idx * batch_size
+                        end_idx = min(start_idx + batch_size, len(markets_to_process))
+                        batch = markets_to_process[start_idx:end_idx]
+                        await process_market_batch(batch, batch_idx)
+                
+                # Run all processing in a single async context
+                asyncio.run(process_all_markets())
+                
+                logger.info(f"[SIMILARITY] ✓ Finished processing {len(markets_to_process)} markets in {total_batches} batches")
+            else:
+                logger.info(f"[SIMILARITY] No markets to process (all markets already have embeddings or were skipped)")
+                logger.debug(f"[SIMILARITY] new_market_ids tracked: {len(new_market_ids)}, "
+                           f"new_markets found: {len(new_markets)}, markets_to_upsert: {len(markets_to_upsert) if 'markets_to_upsert' in locals() else 0}")
         
         added_key = f'{exchange_name}_added'
         updated_key = f'{exchange_name}_updated'
