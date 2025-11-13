@@ -135,8 +135,8 @@ class KalshiClient(ExchangeClient):
                 self.rate_limiter.wait_if_needed()
                 
                 # Calculate how many to request this page
-                # Default page size if not specified (Kalshi API default is typically 100)
-                default_page_size = page_size or 100
+                # Default page size if not specified (Kalshi API supports up to 1000 per page)
+                default_page_size = page_size or 1000
                 
                 if limit:
                     remaining = limit - total_fetched
@@ -670,41 +670,109 @@ class KalshiClient(ExchangeClient):
         bids = []
         asks = []
         
+        # Store original yes/no structure in metadata for later extraction
+        orderbook_metadata = {'raw': orderbook_data}
+        
         # Kalshi typically has 'yes' and 'no' sides, or 'bids' and 'asks'
         if 'yes' in data and 'no' in data:
             # Binary market with yes/no sides
             # Handle case where yes/no might be None
-            yes_data = data.get('yes') or {}
-            no_data = data.get('no') or {}
+            yes_data = data.get('yes')
+            no_data = data.get('no')
             
-            yes_bids = yes_data.get('bids', []) if isinstance(yes_data, dict) else []
-            yes_asks = yes_data.get('asks', []) if isinstance(yes_data, dict) else []
-            no_bids = no_data.get('bids', []) if isinstance(no_data, dict) else []
-            no_asks = no_data.get('asks', []) if isinstance(no_data, dict) else []
+            # Preserve original structure in metadata
+            orderbook_metadata['yes'] = yes_data
+            orderbook_metadata['no'] = no_data
             
-            # Convert yes/no to standard bids/asks
-            # Yes bids are bids, Yes asks are asks
-            # No bids are asks (betting against), No asks are bids
-            for bid in yes_bids:
-                price = float(bid.get('price', bid.get('yes_price', 0)))
-                quantity = float(bid.get('quantity', bid.get('size', 0)))
-                bids.append(OrderBookEntry(price=price, quantity=quantity, metadata=bid))
+            # Kalshi API returns yes/no as arrays of [price, quantity] pairs
+            # IMPORTANT: Kalshi only returns BIDS for both YES and NO sides
+            # ASKS are implied: YES ask = NO bid inverted, NO ask = YES bid inverted
+            # Prices are in cents (1-100), so divide by 100 to get decimal (0.01-1.0)
+            # Or as dictionaries with bids/asks (legacy format)
+            if isinstance(yes_data, list):
+                # Array format: [[price_cents, quantity], ...]
+                # This represents YES BIDS (people buying YES)
+                for entry in yes_data:
+                    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                        price_cents = float(entry[0])
+                        price = price_cents / 100.0  # Convert cents to decimal
+                        quantity = float(entry[1])
+                        # Mark this as YES bid in metadata
+                        bids.append(OrderBookEntry(price=price, quantity=quantity, metadata={'raw': entry, 'side': 'yes', 'type': 'bid'}))
+            elif isinstance(yes_data, dict):
+                # Dictionary format: {"bids": [...], "asks": [...]}
+                yes_bids = yes_data.get('bids', [])
+                yes_asks = yes_data.get('asks', [])
+                
+                for bid in yes_bids:
+                    if isinstance(bid, (list, tuple)) and len(bid) >= 2:
+                        price_cents = float(bid[0])
+                        price = price_cents / 100.0 if price_cents > 1 else price_cents
+                        quantity = float(bid[1])
+                        bids.append(OrderBookEntry(price=price, quantity=quantity, metadata={'raw': bid}))
+                    elif isinstance(bid, dict):
+                        price = float(bid.get('price', bid.get('yes_price', 0)))
+                        quantity = float(bid.get('quantity', bid.get('size', 0)))
+                        bids.append(OrderBookEntry(price=price, quantity=quantity, metadata=bid))
+                
+                for ask in yes_asks:
+                    if isinstance(ask, (list, tuple)) and len(ask) >= 2:
+                        price_cents = float(ask[0])
+                        price = price_cents / 100.0 if price_cents > 1 else price_cents
+                        quantity = float(ask[1])
+                        asks.append(OrderBookEntry(price=price, quantity=quantity, metadata={'raw': ask}))
+                    elif isinstance(ask, dict):
+                        price = float(ask.get('price', ask.get('yes_price', 0)))
+                        quantity = float(ask.get('quantity', ask.get('size', 0)))
+                        asks.append(OrderBookEntry(price=price, quantity=quantity, metadata=ask))
             
-            for ask in yes_asks:
-                price = float(ask.get('price', ask.get('yes_price', 0)))
-                quantity = float(ask.get('quantity', ask.get('size', 0)))
-                asks.append(OrderBookEntry(price=price, quantity=quantity, metadata=ask))
-            
-            # Add no side orders (inverted)
-            for bid in no_bids:
-                price = 1.0 - float(bid.get('price', bid.get('no_price', 0)))
-                quantity = float(bid.get('quantity', bid.get('size', 0)))
-                asks.append(OrderBookEntry(price=price, quantity=quantity, metadata=bid))
-            
-            for ask in no_asks:
-                price = 1.0 - float(ask.get('price', ask.get('no_price', 0)))
-                quantity = float(ask.get('quantity', ask.get('size', 0)))
-                bids.append(OrderBookEntry(price=price, quantity=quantity, metadata=ask))
+            # Handle no side (inverted prices: no_price = 1 - yes_price)
+            if isinstance(no_data, list):
+                # Array format: [[price_cents, quantity], ...]
+                # IMPORTANT: This represents NO BIDS (people buying NO)
+                # NO bids stay as NO bids, but we also need to create YES asks from them
+                # YES ask price = 1 - NO bid price (because buying NO at X = selling YES at 1-X)
+                for entry in no_data:
+                    if isinstance(entry, (list, tuple)) and len(entry) >= 2:
+                        no_price_cents = float(entry[0])
+                        no_price = no_price_cents / 100.0  # Convert cents to decimal
+                        quantity = float(entry[1])
+                        # NO bid stays as bid (we'll handle the YES ask conversion in orderbook_poller)
+                        # But we also add it to bids with metadata
+                        bids.append(OrderBookEntry(price=no_price, quantity=quantity, metadata={'raw': entry, 'side': 'no', 'type': 'bid', 'no_price': no_price}))
+                        # Also create YES ask (inverted): buying NO at no_price = selling YES at (1 - no_price)
+                        yes_ask_price = 1.0 - no_price
+                        asks.append(OrderBookEntry(price=yes_ask_price, quantity=quantity, metadata={'raw': entry, 'side': 'yes', 'type': 'ask', 'derived_from': 'no_bid', 'no_price': no_price}))
+            elif isinstance(no_data, dict):
+                # Dictionary format: {"bids": [...], "asks": [...]}
+                no_bids = no_data.get('bids', [])
+                no_asks = no_data.get('asks', [])
+                
+                for bid in no_bids:
+                    if isinstance(bid, (list, tuple)) and len(bid) >= 2:
+                        no_price_cents = float(bid[0])
+                        no_price = no_price_cents / 100.0 if no_price_cents > 1 else no_price_cents
+                        yes_price = 1.0 - no_price
+                        quantity = float(bid[1])
+                        asks.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata={'raw': bid, 'no_price': no_price}))
+                    elif isinstance(bid, dict):
+                        no_price = float(bid.get('price', bid.get('no_price', 0)))
+                        yes_price = 1.0 - no_price
+                        quantity = float(bid.get('quantity', bid.get('size', 0)))
+                        asks.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata=bid))
+                
+                for ask in no_asks:
+                    if isinstance(ask, (list, tuple)) and len(ask) >= 2:
+                        no_price_cents = float(ask[0])
+                        no_price = no_price_cents / 100.0 if no_price_cents > 1 else no_price_cents
+                        yes_price = 1.0 - no_price
+                        quantity = float(ask[1])
+                        bids.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata={'raw': ask, 'no_price': no_price}))
+                    elif isinstance(ask, dict):
+                        no_price = float(ask.get('price', ask.get('no_price', 0)))
+                        yes_price = 1.0 - no_price
+                        quantity = float(ask.get('quantity', ask.get('size', 0)))
+                        bids.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata=ask))
         else:
             # Standard bids/asks structure
             raw_bids = data.get('bids', [])
