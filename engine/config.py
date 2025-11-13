@@ -9,7 +9,7 @@ class EngineConfig:
     
     # Polling intervals (in seconds)
     MARKET_POLL_INTERVAL: int = int(os.getenv('MARKET_POLL_INTERVAL', '300'))  # 5 minutes default
-    ORDERBOOK_POLL_INTERVAL: int = int(os.getenv('ORDERBOOK_POLL_INTERVAL', '30'))  # 30 seconds default
+    ORDERBOOK_POLL_INTERVAL: int = int(os.getenv('ORDERBOOK_POLL_INTERVAL', '10'))  # 10 seconds default
     
     # Retry settings
     MAX_RETRIES: int = int(os.getenv('MAX_RETRIES', '3'))
@@ -35,12 +35,21 @@ class EngineConfig:
     
     # OpenAI settings
     OPENAI_API_KEY: Optional[str] = os.getenv('OPENAI_API_KEY')
-    OPENAI_MODEL: str = os.getenv('OPENAI_MODEL', 'gpt-4o-mini')
+    OPENAI_MODEL: str = os.getenv('OPENAI_MODEL', 'gpt-5-nano')
     EMBEDDING_MODEL: str = os.getenv('EMBEDDING_MODEL', 'text-embedding-3-small')
     
     # Similarity settings
     SIMILARITY_THRESHOLD: float = float(os.getenv('SIMILARITY_THRESHOLD', '0.8'))
     LLM_VERIFICATION_ENABLED: bool = os.getenv('LLM_VERIFICATION_ENABLED', 'true').lower() == 'true'
+    
+    # Async processing settings
+    ASYNC_BATCH_SIZE: int = int(os.getenv('ASYNC_BATCH_SIZE', '20'))  # Markets processed concurrently
+    ASYNC_VERIFICATION_BATCH_SIZE: int = int(os.getenv('ASYNC_VERIFICATION_BATCH_SIZE', '10'))  # LLM verifications processed concurrently
+    
+    # Arbitrage settings
+    ORDERBOOK_POLL_INTERVAL: int = int(os.getenv('ORDERBOOK_POLL_INTERVAL', '10'))  # seconds
+    ARBITRAGE_FEES: float = float(os.getenv('ARBITRAGE_FEES', '0.0'))  # percentage (e.g., 0.02 for 2%)
+    ARBITRAGE_MIN_PROFIT: float = float(os.getenv('ARBITRAGE_MIN_PROFIT', '0.0'))  # minimum profit to store
     
     @classmethod
     def get_market_poll_interval(cls) -> int:
