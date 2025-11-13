@@ -41,6 +41,7 @@ class DatabaseMarket:
     description: Optional[str] = None
     status: Optional[str] = 'active'  # 'active', 'expired', 'processing'
     last_polled_at: Optional[datetime] = None
+    extra: Optional[Dict[str, Any]] = None  # JSONB field for exchange-specific data
     id: Optional[str] = None  # UUID from database
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -86,6 +87,8 @@ class DatabaseMarket:
                 data['last_polled_at'] = self.last_polled_at.isoformat()
             else:
                 data['last_polled_at'] = self.last_polled_at
+        if self.extra is not None:
+            data['extra'] = self.extra
         
         if exclude_none:
             data = {k: v for k, v in data.items() if v is not None}
@@ -163,7 +166,8 @@ class DatabaseMarket:
             tags=metadata.tags,
             description=metadata.description,
             status='active',  # New markets start as active
-            last_polled_at=None  # Will be set during sync
+            last_polled_at=None,  # Will be set during sync
+            extra=metadata.extra  # Preserve extra data from exchange
         )
 
     @classmethod
@@ -226,6 +230,7 @@ class DatabaseMarket:
             description=data.get('description'),
             status=data.get('status', 'active'),
             last_polled_at=last_polled_at,
+            extra=data.get('extra'),
             created_at=created_at,
             updated_at=updated_at
         )
@@ -354,5 +359,148 @@ class MarketPair:
             similarity_score=similarity_score,
             llm_verified=llm_verified,
             llm_confidence=llm_confidence
+        )
+
+
+@dataclass
+class OrderbookSnapshot:
+    """Database model for orderbooks table.
+    
+    Represents a snapshot of an orderbook at a specific point in time.
+    Stores yes/no bids and asks as JSONB arrays.
+    """
+    market_id: str  # UUID from markets table
+    exchange: str
+    yes_bids: List[Dict[str, float]]  # [{ price, quantity }, ...] sorted descending
+    yes_asks: List[Dict[str, float]]  # [{ price, quantity }, ...] sorted ascending
+    no_bids: List[Dict[str, float]]  # [{ price, quantity }, ...] sorted descending
+    no_asks: List[Dict[str, float]]  # [{ price, quantity }, ...] sorted ascending
+    timestamp: Optional[datetime] = None
+    id: Optional[str] = None  # UUID from database
+    created_at: Optional[datetime] = None
+
+    def to_dict(self, exclude_none: bool = False) -> Dict[str, Any]:
+        """Convert to dictionary for database operations."""
+        data = {
+            'market_id': self.market_id,
+            'exchange': self.exchange,
+            'yes_bids': self.yes_bids,
+            'yes_asks': self.yes_asks,
+            'no_bids': self.no_bids,
+            'no_asks': self.no_asks,
+        }
+        
+        if self.timestamp is not None:
+            data['timestamp'] = self.timestamp.isoformat() if isinstance(self.timestamp, datetime) else self.timestamp
+        
+        if exclude_none:
+            data = {k: v for k, v in data.items() if v is not None}
+        
+        data = _convert_datetime_for_json(data)
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'OrderbookSnapshot':
+        """Create OrderbookSnapshot from dictionary."""
+        timestamp = data.get('timestamp')
+        if isinstance(timestamp, str):
+            try:
+                timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            except ValueError:
+                timestamp = None
+        
+        created_at = data.get('created_at')
+        if isinstance(created_at, str):
+            try:
+                created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            except ValueError:
+                created_at = None
+        
+        return cls(
+            id=data.get('id'),
+            market_id=data['market_id'],
+            exchange=data['exchange'],
+            yes_bids=data.get('yes_bids', []),
+            yes_asks=data.get('yes_asks', []),
+            no_bids=data.get('no_bids', []),
+            no_asks=data.get('no_asks', []),
+            timestamp=timestamp,
+            created_at=created_at
+        )
+
+
+@dataclass
+class ArbitrageOpportunity:
+    """Database model for arbitrage_opportunities table.
+    
+    Represents a calculated arbitrage opportunity between two markets.
+    Strategy: Buy YES on one exchange and NO on the other.
+    """
+    market_pair_id: str  # UUID from market_pairs table
+    direction: str  # e.g., 'yes_kalshi_no_polymarket'
+    yes_exchange: str  # Exchange where we buy YES
+    no_exchange: str  # Exchange where we buy NO
+    yes_price: float  # Price to buy YES
+    no_price: float  # Price to buy NO
+    profit_per_share: float  # Profit per share (1.0 - yes_price - no_price - fees)
+    max_size: float  # Maximum number of shares that can be arbitraged
+    fees: float = 0.0
+    timestamp: Optional[datetime] = None
+    id: Optional[str] = None  # UUID from database
+    created_at: Optional[datetime] = None
+
+    def to_dict(self, exclude_none: bool = False) -> Dict[str, Any]:
+        """Convert to dictionary for database operations."""
+        data = {
+            'market_pair_id': self.market_pair_id,
+            'direction': self.direction,
+            'yes_exchange': self.yes_exchange,
+            'no_exchange': self.no_exchange,
+            'yes_price': float(self.yes_price),
+            'no_price': float(self.no_price),
+            'profit_per_share': float(self.profit_per_share),
+            'max_size': float(self.max_size),
+            'fees': float(self.fees),
+        }
+        
+        if self.timestamp is not None:
+            data['timestamp'] = self.timestamp.isoformat() if isinstance(self.timestamp, datetime) else self.timestamp
+        
+        if exclude_none:
+            data = {k: v for k, v in data.items() if v is not None}
+        
+        data = _convert_datetime_for_json(data)
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ArbitrageOpportunity':
+        """Create ArbitrageOpportunity from dictionary."""
+        timestamp = data.get('timestamp')
+        if isinstance(timestamp, str):
+            try:
+                timestamp = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            except ValueError:
+                timestamp = None
+        
+        created_at = data.get('created_at')
+        if isinstance(created_at, str):
+            try:
+                created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            except ValueError:
+                created_at = None
+        
+        return cls(
+            id=data.get('id'),
+            market_pair_id=data['market_pair_id'],
+            direction=data['direction'],
+            yes_exchange=data['yes_exchange'],
+            no_exchange=data['no_exchange'],
+            yes_price=float(data['yes_price']),
+            no_price=float(data['no_price']),
+            profit_per_share=float(data['profit_per_share']),
+            max_size=float(data['max_size']),
+            fees=float(data.get('fees', 0.0)),
+            timestamp=timestamp,
+            created_at=created_at
         )
 

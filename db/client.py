@@ -4,7 +4,7 @@ import os
 from typing import List, Optional, Dict, Any
 from supabase import create_client, Client
 
-from .models import DatabaseMarket, MarketPair
+from .models import DatabaseMarket, MarketPair, OrderbookSnapshot, ArbitrageOpportunity
 
 
 class SupabaseClient:
@@ -414,4 +414,96 @@ class SupabaseClient:
         if response.data:
             return len(response.data) if isinstance(response.data, list) else 1
         return 0
+
+    def store_orderbook(self, orderbook: OrderbookSnapshot) -> Dict[str, Any]:
+        """Store an orderbook snapshot in the database.
+        
+        Args:
+            orderbook: OrderbookSnapshot instance to store.
+            
+        Returns:
+            Dictionary containing the inserted orderbook data.
+        """
+        data = orderbook.to_dict(exclude_none=True)
+        
+        response = self.client.table("orderbooks").insert(data).execute()
+        
+        if response.data:
+            return response.data[0] if isinstance(response.data, list) else response.data
+        return {}
+
+    def get_latest_orderbook(self, market_id: str, exchange: str) -> Optional[OrderbookSnapshot]:
+        """Get the latest orderbook snapshot for a market.
+        
+        Args:
+            market_id: Market identifier (market_id field) or UUID.
+            exchange: Exchange name.
+            
+        Returns:
+            OrderbookSnapshot if found, None otherwise.
+        """
+        # If market_id is a UUID (36 chars), use it directly; otherwise get the market first
+        if len(market_id) == 36 and market_id.count('-') == 4:
+            # Looks like a UUID, use directly
+            market_uuid = market_id
+        else:
+            # Get the market to find its UUID
+            market = self.get_market(market_id, exchange)
+            if not market or not market.id:
+                return None
+            market_uuid = market.id
+        
+        response = self.client.table("orderbooks") \
+            .select("*") \
+            .eq("market_id", market_uuid) \
+            .eq("exchange", exchange) \
+            .order("timestamp", desc=True) \
+            .limit(1) \
+            .execute()
+        
+        if response.data and len(response.data) > 0:
+            return OrderbookSnapshot.from_dict(response.data[0])
+        return None
+
+    def store_arbitrage_opportunity(self, opportunity: ArbitrageOpportunity) -> Dict[str, Any]:
+        """Store an arbitrage opportunity in the database.
+        
+        Args:
+            opportunity: ArbitrageOpportunity instance to store.
+            
+        Returns:
+            Dictionary containing the inserted opportunity data.
+        """
+        data = opportunity.to_dict(exclude_none=True)
+        
+        response = self.client.table("arbitrage_opportunities").insert(data).execute()
+        
+        if response.data:
+            return response.data[0] if isinstance(response.data, list) else response.data
+        return {}
+
+    def get_arbitrage_opportunities(
+        self,
+        market_pair_id: str,
+        limit: int = 100
+    ) -> List[ArbitrageOpportunity]:
+        """Get arbitrage opportunities for a market pair.
+        
+        Args:
+            market_pair_id: UUID of the market pair.
+            limit: Maximum number of opportunities to return.
+            
+        Returns:
+            List of ArbitrageOpportunity instances, ordered by timestamp descending.
+        """
+        response = self.client.table("arbitrage_opportunities") \
+            .select("*") \
+            .eq("market_pair_id", market_pair_id) \
+            .order("timestamp", desc=True) \
+            .limit(limit) \
+            .execute()
+        
+        if response.data:
+            return [ArbitrageOpportunity.from_dict(item) for item in response.data]
+        return []
 
