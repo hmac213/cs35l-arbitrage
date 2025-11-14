@@ -7,3 +7,6 @@ pytest-cov
 pytest-mock
 openai
 httpx
+fastapi
+uvicorn[standard]
+python-multipart
