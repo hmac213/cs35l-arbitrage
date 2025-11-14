@@ -506,4 +506,34 @@ class SupabaseClient:
         if response.data:
             return [ArbitrageOpportunity.from_dict(item) for item in response.data]
         return []
+    
+    def get_latest_arbitrage_opportunity(
+        self,
+        market_pair_id: str
+    ) -> Optional[ArbitrageOpportunity]:
+        """Get the latest arbitrage opportunity for a market pair.
+        
+        Args:
+            market_pair_id: UUID of the market pair.
+            
+        Returns:
+            Latest ArbitrageOpportunity if found, None otherwise.
+        """
+        opportunities = self.get_arbitrage_opportunities(market_pair_id, limit=1)
+        return opportunities[0] if opportunities else None
+    
+    def get_market_by_id(self, market_uuid: str) -> Optional[DatabaseMarket]:
+        """Get a market by its database UUID.
+        
+        Args:
+            market_uuid: The market UUID (id field).
+            
+        Returns:
+            DatabaseMarket instance if found, None otherwise.
+        """
+        response = self.client.table("markets").select("*").eq("id", market_uuid).execute()
+        
+        if response.data and len(response.data) > 0:
+            return DatabaseMarket.from_dict(response.data[0])
+        return None
 
