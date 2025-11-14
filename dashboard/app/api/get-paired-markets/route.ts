@@ -1,17 +1,21 @@
 import { NextResponse } from "next/server";
 import { MarketPair } from "@/types/api";
 
+// Always fetch fresh data from the backend for each request.
+export const dynamic = "force-dynamic";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-export async function GET(): Promise<NextResponse<MarketPair[] | { error: string }>> {
+export async function GET(): Promise<
+  NextResponse<MarketPair[] | { error: string }>
+> {
   try {
     const response = await fetch(`${API_URL}/api/get_paired_markets`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
       },
-      // Revalidate every 30 seconds
-      next: { revalidate: 30 },
+      cache: "no-store",
     });
 
     if (!response.ok) {
@@ -33,4 +37,3 @@ export async function GET(): Promise<NextResponse<MarketPair[] | { error: string
     );
   }
 }
-
