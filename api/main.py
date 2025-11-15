@@ -1,9 +1,16 @@
 """FastAPI application entry point."""
 
 import os
+from pathlib import Path
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.endpoints import market_pairs
+
+# Load environment variables from .env file
+# Look for .env in the project root (parent of api/ directory)
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 app = FastAPI(
     title="Arbitrage API",

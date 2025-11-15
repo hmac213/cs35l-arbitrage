@@ -104,56 +104,51 @@ async def get_paired_markets(
     Returns:
         List of enriched market pair dictionaries.
     """
-    # Get all market pairs
-    pairs = db_client.get_all_market_pairs()
+    # Use optimized single-query method
+    result = db_client.get_paired_markets_enriched()
     
-    result = []
-    
-    for pair in pairs:
-        # Fetch market 1 details
-        market_1 = db_client.get_market_by_id(pair.market_1_id)
-        if not market_1:
-            continue  # Skip if market not found
+    # Convert datetime strings to ISO format for consistency
+    for pair_data in result:
+        # Convert market timestamps
+        for market_key in ["market_1", "market_2"]:
+            market = pair_data[market_key]
+            if market.get("resolve_date"):
+                market["resolve_date"] = market["resolve_date"] if isinstance(market["resolve_date"], str) else market["resolve_date"].isoformat()
+            if market.get("resolve_time"):
+                market["resolve_time"] = market["resolve_time"] if isinstance(market["resolve_time"], str) else market["resolve_time"].isoformat()
+            if market.get("last_polled_at"):
+                market["last_polled_at"] = market["last_polled_at"] if isinstance(market["last_polled_at"], str) else market["last_polled_at"].isoformat()
+            if market.get("created_at"):
+                market["created_at"] = market["created_at"] if isinstance(market["created_at"], str) else market["created_at"].isoformat()
+            if market.get("updated_at"):
+                market["updated_at"] = market["updated_at"] if isinstance(market["updated_at"], str) else market["updated_at"].isoformat()
         
-        # Fetch market 2 details
-        market_2 = db_client.get_market_by_id(pair.market_2_id)
-        if not market_2:
-            continue  # Skip if market not found
+        # Convert pair timestamps
+        if pair_data.get("created_at"):
+            pair_data["created_at"] = pair_data["created_at"] if isinstance(pair_data["created_at"], str) else pair_data["created_at"].isoformat()
+        if pair_data.get("updated_at"):
+            pair_data["updated_at"] = pair_data["updated_at"] if isinstance(pair_data["updated_at"], str) else pair_data["updated_at"].isoformat()
         
-        # Fetch latest orderbooks
-        orderbook_1 = db_client.get_latest_orderbook(
-            market_1.market_id,
-            market_1.exchange
-        )
-        orderbook_2 = db_client.get_latest_orderbook(
-            market_2.market_id,
-            market_2.exchange
-        )
+        # Convert orderbook timestamps
+        for orderbook_key in ["orderbook_1", "orderbook_2"]:
+            orderbook = pair_data.get(orderbook_key)
+            if orderbook:
+                if orderbook.get("timestamp"):
+                    orderbook["timestamp"] = orderbook["timestamp"] if isinstance(orderbook["timestamp"], str) else orderbook["timestamp"].isoformat()
+                if orderbook.get("created_at"):
+                    orderbook["created_at"] = orderbook["created_at"] if isinstance(orderbook["created_at"], str) else orderbook["created_at"].isoformat()
         
-        # Fetch latest arbitrage opportunity
-        latest_opportunity = db_client.get_latest_arbitrage_opportunity(pair.id)
+        # Convert opportunity timestamps
+        if pair_data.get("current_opportunity"):
+            opp = pair_data["current_opportunity"]
+            if opp.get("timestamp"):
+                opp["timestamp"] = opp["timestamp"] if isinstance(opp["timestamp"], str) else opp["timestamp"].isoformat()
+            if opp.get("created_at"):
+                opp["created_at"] = opp["created_at"] if isinstance(opp["created_at"], str) else opp["created_at"].isoformat()
         
-        # Build response object
-        pair_data = {
-            "pair_id": pair.id,
-            "similarity_score": pair.similarity_score,
-            "llm_verified": pair.llm_verified,
-            "llm_confidence": pair.llm_confidence,
-            "created_at": pair.created_at.isoformat() if pair.created_at else None,
-            "updated_at": pair.updated_at.isoformat() if pair.updated_at else None,
-            "market_1": _market_to_dict(market_1),
-            "market_2": _market_to_dict(market_2),
-            "current_opportunity": _opportunity_to_dict(latest_opportunity),
-            "last_opportunity_time": (
-                latest_opportunity.timestamp.isoformat() 
-                if latest_opportunity and latest_opportunity.timestamp 
-                else None
-            ),
-            "orderbook_1": _orderbook_to_dict(orderbook_1),
-            "orderbook_2": _orderbook_to_dict(orderbook_2),
-        }
-        
-        result.append(pair_data)
+        # Convert last_opportunity_time
+        if pair_data.get("last_opportunity_time"):
+            pair_data["last_opportunity_time"] = pair_data["last_opportunity_time"] if isinstance(pair_data["last_opportunity_time"], str) else pair_data["last_opportunity_time"].isoformat()
     
     return result
 
