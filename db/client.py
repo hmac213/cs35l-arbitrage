@@ -536,4 +536,127 @@ class SupabaseClient:
         if response.data and len(response.data) > 0:
             return DatabaseMarket.from_dict(response.data[0])
         return None
+    
+    def get_paired_markets_enriched(self) -> List[Dict[str, Any]]:
+        """Get all market pairs with enriched data using an optimized single SQL query.
+        
+        This method uses a PostgreSQL RPC function to fetch all pairs with their related
+        markets, latest orderbooks, and latest arbitrage opportunities in a single query,
+        avoiding N+1 query problems.
+        
+        Returns:
+            List of dictionaries containing enriched market pair data.
+        """
+        try:
+            response = self.client.rpc("get_paired_markets_enriched").execute()
+            
+            if not response.data:
+                return []
+            
+            result = []
+            for row in response.data:
+                # Build market_1 dict
+                market_1 = {
+                    "id": row.get("market_1_id"),
+                    "market_id": row.get("market_1_market_id"),
+                    "exchange": row.get("market_1_exchange"),
+                    "name": row.get("market_1_name"),
+                    "rules": row.get("market_1_rules"),
+                    "resolve_date": row.get("market_1_resolve_date"),
+                    "resolve_time": row.get("market_1_resolve_time"),
+                    "category": row.get("market_1_category"),
+                    "subcategory": row.get("market_1_subcategory"),
+                    "tags": row.get("market_1_tags"),
+                    "description": row.get("market_1_description"),
+                    "status": row.get("market_1_status"),
+                    "last_polled_at": row.get("market_1_last_polled_at"),
+                    "extra": row.get("market_1_extra"),
+                    "created_at": row.get("market_1_created_at"),
+                    "updated_at": row.get("market_1_updated_at"),
+                }
+                
+                # Build market_2 dict
+                market_2 = {
+                    "id": row.get("market_2_id"),
+                    "market_id": row.get("market_2_market_id"),
+                    "exchange": row.get("market_2_exchange"),
+                    "name": row.get("market_2_name"),
+                    "rules": row.get("market_2_rules"),
+                    "resolve_date": row.get("market_2_resolve_date"),
+                    "resolve_time": row.get("market_2_resolve_time"),
+                    "category": row.get("market_2_category"),
+                    "subcategory": row.get("market_2_subcategory"),
+                    "tags": row.get("market_2_tags"),
+                    "description": row.get("market_2_description"),
+                    "status": row.get("market_2_status"),
+                    "last_polled_at": row.get("market_2_last_polled_at"),
+                    "extra": row.get("market_2_extra"),
+                    "created_at": row.get("market_2_created_at"),
+                    "updated_at": row.get("market_2_updated_at"),
+                }
+                
+                # Build orderbook_1 (may be null)
+                orderbook_1 = None
+                if row.get("orderbook_1_id"):
+                    orderbook_1 = {
+                        "yes_bids": row.get("orderbook_1_yes_bids", []),
+                        "yes_asks": row.get("orderbook_1_yes_asks", []),
+                        "no_bids": row.get("orderbook_1_no_bids", []),
+                        "no_asks": row.get("orderbook_1_no_asks", []),
+                        "timestamp": row.get("orderbook_1_timestamp"),
+                        "created_at": row.get("orderbook_1_created_at"),
+                    }
+                
+                # Build orderbook_2 (may be null)
+                orderbook_2 = None
+                if row.get("orderbook_2_id"):
+                    orderbook_2 = {
+                        "yes_bids": row.get("orderbook_2_yes_bids", []),
+                        "yes_asks": row.get("orderbook_2_yes_asks", []),
+                        "no_bids": row.get("orderbook_2_no_bids", []),
+                        "no_asks": row.get("orderbook_2_no_asks", []),
+                        "timestamp": row.get("orderbook_2_timestamp"),
+                        "created_at": row.get("orderbook_2_created_at"),
+                    }
+                
+                # Build current_opportunity (may be null)
+                current_opportunity = None
+                if row.get("opportunity_id"):
+                    current_opportunity = {
+                        "direction": row.get("opportunity_direction"),
+                        "yes_exchange": row.get("opportunity_yes_exchange"),
+                        "no_exchange": row.get("opportunity_no_exchange"),
+                        "yes_price": float(row.get("opportunity_yes_price", 0)),
+                        "no_price": float(row.get("opportunity_no_price", 0)),
+                        "profit_per_share": float(row.get("opportunity_profit_per_share", 0)),
+                        "max_size": float(row.get("opportunity_max_size", 0)),
+                        "fees": float(row.get("opportunity_fees", 0)),
+                        "timestamp": row.get("opportunity_timestamp"),
+                        "created_at": row.get("opportunity_created_at"),
+                    }
+                
+                # Build pair data
+                pair_data = {
+                    "pair_id": row.get("pair_id"),
+                    "similarity_score": float(row.get("similarity_score", 0)),
+                    "llm_verified": bool(row.get("llm_verified", False)),
+                    "llm_confidence": float(row.get("llm_confidence")) if row.get("llm_confidence") is not None else None,
+                    "created_at": row.get("pair_created_at"),
+                    "updated_at": row.get("pair_updated_at"),
+                    "market_1": market_1,
+                    "market_2": market_2,
+                    "current_opportunity": current_opportunity,
+                    "last_opportunity_time": row.get("opportunity_timestamp"),
+                    "orderbook_1": orderbook_1,
+                    "orderbook_2": orderbook_2,
+                }
+                
+                result.append(pair_data)
+            
+            return result
+            
+        except Exception as e:
+            # Log error and fall back to empty list or re-raise
+            # For now, we'll re-raise to see the error
+            raise RuntimeError(f"Error fetching enriched market pairs: {str(e)}") from e
 
