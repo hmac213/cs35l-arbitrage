@@ -253,34 +253,12 @@ export default function SignupPage() {
           <p className="mt-6 text-center text-sm text-zinc-400">
             Already have an account?{" "}
             <Link
-              href="/login"
+              href="/"
               className="font-medium text-blue-400 hover:text-blue-300"
             >
               Sign in
             </Link>
           </p>
-        </div>
-
-        <div className="mt-6 text-center">
-          <Link
-            href="/"
-            className="text-sm text-zinc-500 hover:text-zinc-300 inline-flex items-center gap-1"
-          >
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10 19l-7-7m0 0l7-7m-7 7h18"
-              />
-            </svg>
-            Back to Dashboard
-          </Link>
         </div>
       </div>
     </div>
