@@ -25,7 +25,7 @@ export default function LoginPage() {
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-8">
           <div className="text-center mb-8">
             <h1 className="text-2xl font-bold text-white">
-              Sign in to <span className="text-blue-400">Arbitrage</span>
+              Sign in to <span className="text-purple-400">Arbitrage</span>
             </h1>
             <p className="mt-2 text-sm text-zinc-400">
               Welcome back! Please sign in to continue
@@ -77,7 +77,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email address"
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-white placeholder-zinc-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
                 required
               />
             </div>
@@ -96,7 +96,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-white placeholder-zinc-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-white placeholder-zinc-500 focus:border-purple-500 focus:outline-none focus:ring-1 focus:ring-purple-500"
                   required
                 />
                 <button
@@ -145,7 +145,7 @@ export default function LoginPage() {
 
             <button
               type="submit"
-              className="w-full rounded-lg bg-blue-500 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-blue-600 flex items-center justify-center gap-2"
+              className="w-full rounded-lg bg-purple-500 px-4 py-3 text-sm font-medium text-white transition-colors hover:bg-purple-600 flex items-center justify-center gap-2"
             >
               Continue
               <svg
@@ -168,7 +168,7 @@ export default function LoginPage() {
             Don&apos;t have an account?{" "}
             <Link
               href="/signup"
-              className="font-medium text-blue-400 hover:text-blue-300"
+              className="font-medium text-purple-400 hover:text-purple-300"
             >
               Sign up
             </Link>
