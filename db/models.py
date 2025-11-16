@@ -504,3 +504,69 @@ class ArbitrageOpportunity:
             created_at=created_at
         )
 
+
+@dataclass
+class User:
+    """Database model for users table.
+
+    Represents a user account for authentication.
+    """
+    email: str
+    password_hash: str
+    full_name: str
+    google_id: Optional[str] = None
+    avatar_url: Optional[str] = None
+    email_verified: bool = False
+    id: Optional[str] = None  # UUID from database
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    def to_dict(self, exclude_none: bool = False) -> Dict[str, Any]:
+        """Convert to dictionary for database operations."""
+        data = {
+            'email': self.email,
+            'password_hash': self.password_hash,
+            'full_name': self.full_name,
+            'email_verified': self.email_verified,
+        }
+
+        if self.google_id is not None:
+            data['google_id'] = self.google_id
+        if self.avatar_url is not None:
+            data['avatar_url'] = self.avatar_url
+
+        if exclude_none:
+            data = {k: v for k, v in data.items() if v is not None}
+
+        data = _convert_datetime_for_json(data)
+        return data
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'User':
+        """Create User from dictionary (e.g., from Supabase response)."""
+        created_at = data.get('created_at')
+        if isinstance(created_at, str):
+            try:
+                created_at = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            except ValueError:
+                created_at = None
+
+        updated_at = data.get('updated_at')
+        if isinstance(updated_at, str):
+            try:
+                updated_at = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+            except ValueError:
+                updated_at = None
+
+        return cls(
+            id=data.get('id'),
+            email=data['email'],
+            password_hash=data['password_hash'],
+            full_name=data['full_name'],
+            google_id=data.get('google_id'),
+            avatar_url=data.get('avatar_url'),
+            email_verified=bool(data.get('email_verified', False)),
+            created_at=created_at,
+            updated_at=updated_at
+        )
+
