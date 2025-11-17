@@ -10,12 +10,14 @@ import {
   SortConfig,
   FilterOptions,
 } from "./FilterAndSortControls";
+import { calculateProfitWithBudget } from "@/lib/utils";
 
 interface MarketPairCardsProps {
   pairs: MarketPair[];
+  budget: number | null;
 }
 
-export function MarketPairCards({ pairs }: MarketPairCardsProps) {
+export function MarketPairCards({ pairs, budget }: MarketPairCardsProps) {
   const [selectedPair, setSelectedPair] = useState<MarketPair | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState<SortConfig>({
@@ -28,6 +30,8 @@ export function MarketPairCards({ pairs }: MarketPairCardsProps) {
     maxProfit: "",
     minShares: "",
     maxShares: "",
+    minBudgetProfit: "",
+    maxBudgetProfit: "",
   });
 
   const handleCardClick = (pair: MarketPair) => {
@@ -66,6 +70,21 @@ export function MarketPairCards({ pairs }: MarketPairCardsProps) {
         if (isNaN(maxShares) || opp.max_size > maxShares) return false;
       }
 
+      // Filter by budget profit
+      if (budget !== null && (filters.minBudgetProfit || filters.maxBudgetProfit)) {
+        const budgetCalc = calculateProfitWithBudget(budget, opp);
+        if (budgetCalc) {
+          if (filters.minBudgetProfit) {
+            const minBudgetProfit = parseFloat(filters.minBudgetProfit);
+            if (isNaN(minBudgetProfit) || budgetCalc.totalProfit < minBudgetProfit) return false;
+          }
+          if (filters.maxBudgetProfit) {
+            const maxBudgetProfit = parseFloat(filters.maxBudgetProfit);
+            if (isNaN(maxBudgetProfit) || budgetCalc.totalProfit > maxBudgetProfit) return false;
+          }
+        }
+      }
+
       return true;
     });
 
@@ -87,7 +106,7 @@ export function MarketPairCards({ pairs }: MarketPairCardsProps) {
       ].filter((s) => s !== "none");
 
       for (const sortBy of sortLevels) {
-        const result = compareBySortOption(a, b, oppA, oppB, sortBy);
+        const result = compareBySortOption(a, b, oppA, oppB, sortBy, budget);
         if (result !== 0) return result;
       }
 
@@ -95,7 +114,7 @@ export function MarketPairCards({ pairs }: MarketPairCardsProps) {
     });
 
     return filtered;
-  }, [pairs, sortConfig, filters]);
+  }, [pairs, sortConfig, filters, budget]);
 
   return (
     <>
@@ -106,6 +125,7 @@ export function MarketPairCards({ pairs }: MarketPairCardsProps) {
         onFilterChange={setFilters}
         resultCount={filteredAndSortedPairs.length}
         totalCount={pairs.length}
+        budget={budget}
       />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {filteredAndSortedPairs.length === 0 ? (
@@ -118,6 +138,7 @@ export function MarketPairCards({ pairs }: MarketPairCardsProps) {
               key={pair.pair_id}
               pair={pair}
               onClick={() => handleCardClick(pair)}
+              budget={budget}
             />
           ))
         )}
@@ -149,7 +170,8 @@ function compareBySortOption(
   b: MarketPair,
   oppA: NonNullable<MarketPair["current_opportunity"]>,
   oppB: NonNullable<MarketPair["current_opportunity"]>,
-  sortBy: SortOption
+  sortBy: SortOption,
+  budget: number | null
 ): number {
   switch (sortBy) {
     case "profit_per_share":
@@ -159,6 +181,16 @@ function compareBySortOption(
       const totalA = oppA.profit_per_share * oppA.max_size;
       const totalB = oppB.profit_per_share * oppB.max_size;
       return totalB - totalA;
+    }
+
+    case "profit_with_budget": {
+      if (budget === null) return 0;
+      const calcA = calculateProfitWithBudget(budget, oppA);
+      const calcB = calculateProfitWithBudget(budget, oppB);
+      if (!calcA && !calcB) return 0;
+      if (!calcA) return 1;
+      if (!calcB) return -1;
+      return calcB.totalProfit - calcA.totalProfit;
     }
 
     case "max_size":

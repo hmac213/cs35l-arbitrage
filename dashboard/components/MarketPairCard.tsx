@@ -1,11 +1,12 @@
 "use client";
 
 import { MarketPair } from "@/types/api";
-import { cn, formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime, calculateProfitWithBudget, formatCurrency, formatPercentage } from "@/lib/utils";
 
 interface MarketPairCardProps {
   pair: MarketPair;
   onClick: () => void;
+  budget: number | null;
 }
 
 function OpportunityBadge({ pair }: { pair: MarketPair }) {
@@ -45,10 +46,13 @@ function formatDirection(direction: string): string {
 
 function OpportunityDetails({
   pair,
+  budget,
 }: {
   pair: MarketPair;
+  budget: number | null;
 }) {
   const opp = pair.current_opportunity;
+  const budgetCalc = budget !== null && opp ? calculateProfitWithBudget(budget, opp) : null;
 
   return (
     <div className="mt-4 space-y-3 rounded-md border border-zinc-800 bg-zinc-900/60 p-3 text-xs text-zinc-300">
@@ -96,6 +100,49 @@ function OpportunityDetails({
               </p>
             </div>
           </div>
+          {budgetCalc && (
+            <>
+              <div className="h-px bg-gradient-to-r from-zinc-800 via-zinc-700 to-zinc-800" />
+              <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-emerald-400">
+                    With your budget: {formatCurrency(budget!)}
+                  </p>
+                  {budgetCalc.budgetExceeded && (
+                    <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] text-amber-400">
+                      Max size reached
+                    </span>
+                  )}
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-zinc-400">Shares you can buy</p>
+                    <p className="font-medium text-zinc-50">
+                      {budgetCalc.shares.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-zinc-400">Total profit</p>
+                    <p className="font-medium text-emerald-400">
+                      {formatCurrency(budgetCalc.totalProfit)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-zinc-400">Total cost</p>
+                    <p className="font-medium text-zinc-50">
+                      {formatCurrency(budgetCalc.totalCost)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-[11px] text-zinc-400">ROI</p>
+                    <p className="font-medium text-emerald-400">
+                      {formatPercentage(budgetCalc.roi)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
           <div className="flex items-center justify-between text-[11px] text-zinc-400">
             <span>Opportunity created</span>
             <span>{formatDateTime(opp.timestamp ?? opp.created_at)}</span>
@@ -106,7 +153,7 @@ function OpportunityDetails({
   );
 }
 
-export function MarketPairCard({ pair, onClick }: MarketPairCardProps) {
+export function MarketPairCard({ pair, onClick, budget }: MarketPairCardProps) {
   const { market_1, market_2 } = pair;
   
   // Find the Polymarket market to use as the title
@@ -128,7 +175,7 @@ export function MarketPairCard({ pair, onClick }: MarketPairCardProps) {
         </div>
       </div>
 
-      <OpportunityDetails pair={pair} />
+      <OpportunityDetails pair={pair} budget={budget} />
     </article>
   );
 }

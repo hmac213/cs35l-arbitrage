@@ -1,34 +1,48 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { MarketPair } from "@/types/api";
 import { MarketPairCards } from "@/components/MarketPairCards";
+import { BudgetInput } from "@/components/BudgetInput";
 
-export const dynamic = "force-dynamic";
+export default function Home() {
+  const [pairs, setPairs] = useState<MarketPair[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [budget, setBudget] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-export default async function Home() {
-  let pairs: MarketPair[] = [];
-  let error: string | null = null;
+  useEffect(() => {
+    async function fetchPairs() {
+      try {
+        setIsLoading(true);
+        // Fetch directly from the FastAPI backend so every reload hits live data.
+        const apiBase =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+        const res = await fetch(
+          `${apiBase.replace(/\/$/, "")}/api/get_paired_markets`,
+          {
+            cache: "no-store",
+          }
+        );
 
-  try {
-    // Fetch directly from the FastAPI backend so every reload hits live data.
-    const apiBase =
-      process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    const res = await fetch(
-      `${apiBase.replace(/\/$/, "")}/api/get_paired_markets`,
-      {
-        cache: "no-store",
+        if (!res.ok) {
+          const text = await res.text();
+          console.error("Dashboard failed to fetch market pairs:", res.status, text);
+          setError(`Failed to load market pairs (${res.status})`);
+        } else {
+          const data = await res.json();
+          setPairs(data);
+          setError(null);
+        }
+      } catch (e) {
+        console.error("Dashboard error loading market pairs:", e);
+        setError("Unexpected error loading market pairs.");
+      } finally {
+        setIsLoading(false);
       }
-    );
-
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("Dashboard failed to fetch market pairs:", res.status, text);
-      error = `Failed to load market pairs (${res.status})`;
-    } else {
-      pairs = await res.json();
     }
-  } catch (e) {
-    console.error("Dashboard error loading market pairs:", e);
-    error = "Unexpected error loading market pairs.";
-  }
+    fetchPairs();
+  }, []);
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -50,21 +64,29 @@ export default async function Home() {
         </div>
       </div>
 
+      <BudgetInput budget={budget} onBudgetChange={setBudget} />
+
       {error && (
         <div className="rounded-lg border border-red-500/40 bg-red-950/40 px-3 py-2 text-xs text-red-200">
           {error}
         </div>
       )}
 
-      {!error && pairs.length === 0 && (
+      {isLoading && (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-center text-sm text-zinc-400">
+          Loading market pairs...
+        </div>
+      )}
+
+      {!error && !isLoading && pairs.length === 0 && (
         <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-center text-sm text-zinc-400">
           No market pairs found. Once the engine detects arbitrageable pairs,
           they will appear here.
         </div>
       )}
 
-      {!error && pairs.length > 0 && (
-        <MarketPairCards pairs={pairs} />
+      {!error && !isLoading && pairs.length > 0 && (
+        <MarketPairCards pairs={pairs} budget={budget} />
       )}
     </div>
   );
