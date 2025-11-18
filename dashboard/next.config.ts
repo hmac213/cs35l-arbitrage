@@ -6,6 +6,7 @@ import { resolve } from "path";
 config({ path: resolve(__dirname, "../.env") });
 
 const nextConfig: NextConfig = {
+  reactStrictMode: false,
   env: {
     // Map to NEXT_PUBLIC_ for browser access (using anon key, not secret)
     NEXT_PUBLIC_SUPABASE_URL: process.env.SUPABASE_URL,
