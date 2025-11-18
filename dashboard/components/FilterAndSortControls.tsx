@@ -8,6 +8,7 @@ export type SortOption =
   | "recency"
   | "profit_per_share"
   | "total_profit"
+  | "profit_with_budget"
   | "max_size"
   | "spread"
   | "none";
@@ -23,6 +24,8 @@ export interface FilterOptions {
   maxProfit: string;
   minShares: string;
   maxShares: string;
+  minBudgetProfit: string;
+  maxBudgetProfit: string;
 }
 
 interface FilterAndSortControlsProps {
@@ -32,6 +35,7 @@ interface FilterAndSortControlsProps {
   onFilterChange: (filters: FilterOptions) => void;
   resultCount: number;
   totalCount: number;
+  budget: number | null;
 }
 
 const SORT_OPTIONS: Array<{ value: SortOption; label: string }> = [
@@ -39,6 +43,7 @@ const SORT_OPTIONS: Array<{ value: SortOption; label: string }> = [
   { value: "recency", label: "Recency of arbitrage" },
   { value: "profit_per_share", label: "Profit per share" },
   { value: "total_profit", label: "Total profit opportunity" },
+  { value: "profit_with_budget", label: "Profit with your budget" },
   { value: "max_size", label: "Total shares to trade" },
   { value: "spread", label: "Spread" },
 ];
@@ -50,6 +55,7 @@ export function FilterAndSortControls({
   onFilterChange,
   resultCount,
   totalCount,
+  budget,
 }: FilterAndSortControlsProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -63,6 +69,8 @@ export function FilterAndSortControls({
       maxProfit: "",
       minShares: "",
       maxShares: "",
+      minBudgetProfit: "",
+      maxBudgetProfit: "",
     });
   };
 
@@ -79,7 +87,13 @@ export function FilterAndSortControls({
     const current = sortConfig[currentLevel];
 
     return SORT_OPTIONS.filter(
-      (opt) => opt.value === "none" || !used.includes(opt.value) || opt.value === current
+      (opt) => {
+        // Hide budget-based sort if no budget is set
+        if (opt.value === "profit_with_budget" && budget === null) {
+          return false;
+        }
+        return opt.value === "none" || !used.includes(opt.value) || opt.value === current;
+      }
     );
   };
 
@@ -87,7 +101,9 @@ export function FilterAndSortControls({
     filters.minProfit ||
     filters.maxProfit ||
     filters.minShares ||
-    filters.maxShares;
+    filters.maxShares ||
+    filters.minBudgetProfit ||
+    filters.maxBudgetProfit;
 
   return (
     <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
@@ -219,6 +235,36 @@ export function FilterAndSortControls({
               />
             </div>
           </div>
+          {budget !== null && (
+            <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-emerald-400">
+                  Min Profit (Budget)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={filters.minBudgetProfit}
+                  onChange={(e) => updateFilter("minBudgetProfit", e.target.value)}
+                  placeholder="0.00"
+                  className="w-full rounded-md border border-emerald-500/30 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-50 placeholder:text-zinc-600 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-emerald-400">
+                  Max Profit (Budget)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={filters.maxBudgetProfit}
+                  onChange={(e) => updateFilter("maxBudgetProfit", e.target.value)}
+                  placeholder="No limit"
+                  className="w-full rounded-md border border-emerald-500/30 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-50 placeholder:text-zinc-600 focus:border-emerald-500/50 focus:outline-none focus:ring-1 focus:ring-emerald-500/30"
+                />
+              </div>
+            </div>
+          )}
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
