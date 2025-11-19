@@ -26,6 +26,7 @@ export interface FilterOptions {
   maxShares: string;
   minBudgetProfit: string;
   maxBudgetProfit: string;
+  showFavoritesOnly: boolean;
 }
 
 interface FilterAndSortControlsProps {
@@ -36,6 +37,7 @@ interface FilterAndSortControlsProps {
   resultCount: number;
   totalCount: number;
   budget: number | null;
+  favoritesCount: number;
 }
 
 const SORT_OPTIONS: Array<{ value: SortOption; label: string }> = [
@@ -56,6 +58,7 @@ export function FilterAndSortControls({
   resultCount,
   totalCount,
   budget,
+  favoritesCount,
 }: FilterAndSortControlsProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -71,6 +74,7 @@ export function FilterAndSortControls({
       maxShares: "",
       minBudgetProfit: "",
       maxBudgetProfit: "",
+      showFavoritesOnly: false,
     });
   };
 
@@ -103,7 +107,8 @@ export function FilterAndSortControls({
     filters.minShares ||
     filters.maxShares ||
     filters.minBudgetProfit ||
-    filters.maxBudgetProfit;
+    filters.maxBudgetProfit ||
+    filters.showFavoritesOnly;
 
   return (
     <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">

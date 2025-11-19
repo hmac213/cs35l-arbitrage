@@ -7,6 +7,8 @@ interface MarketPairCardProps {
   pair: MarketPair;
   onClick: () => void;
   budget: number | null;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
 }
 
 function OpportunityBadge({ pair }: { pair: MarketPair }) {
@@ -153,9 +155,9 @@ function OpportunityDetails({
   );
 }
 
-export function MarketPairCard({ pair, onClick, budget }: MarketPairCardProps) {
+export function MarketPairCard({ pair, onClick, budget, isFavorite, onToggleFavorite }: MarketPairCardProps) {
   const { market_1, market_2 } = pair;
-  
+
   // Find the Polymarket market to use as the title
   const polymarketMarket = market_1.exchange === "polymarket" ? market_1 : market_2;
 
@@ -170,7 +172,19 @@ export function MarketPairCard({ pair, onClick, budget }: MarketPairCardProps) {
             {polymarketMarket.name}
           </h2>
         </div>
-        <div className="flex items-end">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
+            className="rounded-full p-1 transition hover:bg-zinc-800"
+            aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+          >
+            <span className="text-lg">
+              {isFavorite ? "❤️" : "🤍"}
+            </span>
+          </button>
           <OpportunityBadge pair={pair} />
         </div>
       </div>
