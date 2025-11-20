@@ -1,0 +1,270 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { MarketPair } from "@/types/api";
+import { MarketPairCards } from "./MarketPairCards";
+import { cn } from "@/lib/utils";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const WS_URL = API_URL.replace(/^http/, "ws").replace(/^https/, "wss");
+
+interface MarketPairsWebSocketProps {
+  budget?: number | null;
+}
+
+export function MarketPairsWebSocket({ budget }: MarketPairsWebSocketProps) {
+  const [pairs, setPairs] = useState<MarketPair[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+
+  // Fetch initial data via REST API
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        
+        const res = await fetch(`${API_URL}/api/get_paired_markets`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`HTTP ${res.status}: ${errorText}`);
+        }
+        
+        const data = await res.json();
+        setPairs(data);
+        setError(null);
+      } catch (e: any) {
+        if (e.name === 'AbortError') {
+          setError("REST API request timed out. Is the backend running on port 8000?");
+        } else if (e.message?.includes('Failed to fetch') || e.message?.includes('NetworkError')) {
+          setError("Cannot connect to backend. Is it running on port 8000?");
+        } else {
+          setError(`Failed to load initial data: ${e.message || e}. Trying WebSocket...`);
+        }
+      }
+    };
+
+    fetchInitialData();
+  }, []);
+
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout | null = null;
+    let pingInterval: NodeJS.Timeout | null = null;
+    let fallbackInterval: NodeJS.Timeout | null = null;
+    let reconnectAttempts = 0;
+    let hasConnectedOnce = false; // Track if we've ever successfully connected
+    const maxReconnectAttempts = 5;
+
+    const connect = () => {
+      const wsUrl = `${WS_URL}/ws/market_pairs`;
+      
+      // Only log connection attempts after first successful connection or if it's a retry
+      if (hasConnectedOnce || reconnectAttempts > 0) {
+        console.log(`Attempting to connect to WebSocket: ${wsUrl} (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+      }
+      
+      // Set a connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (ws && ws.readyState === WebSocket.CONNECTING) {
+          if (hasConnectedOnce) {
+            console.error("WebSocket connection timeout");
+          }
+          ws.close();
+          if (!hasConnectedOnce) {
+            setError("WebSocket connection timeout - check if backend is running");
+          }
+          setIsConnected(false);
+        }
+      }, 5000); // 5 second timeout
+      
+      try {
+        ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          clearTimeout(connectionTimeout);
+          hasConnectedOnce = true; // Mark that we've successfully connected
+          reconnectAttempts = 0; // Reset counter on successful connection
+          setIsConnected(true);
+          setError(null);
+
+          // Send ping every 30 seconds to keep connection alive
+          pingInterval = setInterval(() => {
+            if (ws?.readyState === WebSocket.OPEN) {
+              ws.send("ping");
+            }
+          }, 30000);
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            // Handle pong responses (keep-alive)
+            if (event.data === "pong") {
+              // Silently ignore pong messages - they're just keep-alive responses
+              return;
+            }
+
+            const data = JSON.parse(event.data);
+            
+            // Check if it's an error message
+            if (data.error) {
+              console.error("WebSocket error message:", data.error);
+              setError(data.error);
+              return;
+            }
+
+            // Assume it's an array of market pairs
+            if (Array.isArray(data)) {
+              setPairs(data);
+              setError(null);
+            }
+          } catch (e) {
+            // Only log error if it's not a pong message
+            if (event.data !== "pong") {
+              console.error("Error parsing WebSocket message:", e, event.data);
+              setError("Failed to parse server message");
+            }
+          }
+        };
+
+        ws.onerror = (error) => {
+          clearTimeout(connectionTimeout);
+          // Only log errors if we've connected before (to avoid React Strict Mode noise)
+          if (hasConnectedOnce) {
+            console.error("WebSocket error event:", error);
+          }
+          // Only show error to user if we've connected before
+          if (hasConnectedOnce) {
+            setError("WebSocket connection error - check if backend is running on port 8000");
+          }
+          setIsConnected(false);
+        };
+
+        ws.onclose = (event) => {
+          clearTimeout(connectionTimeout);
+          setIsConnected(false);
+          
+          if (pingInterval) {
+            clearInterval(pingInterval);
+            pingInterval = null;
+          }
+          
+          // Only log/show errors if we've connected before (to avoid React Strict Mode noise)
+          if (hasConnectedOnce) {
+            if (event.code === 1006) {
+              setError("Cannot connect to WebSocket server. Is the backend running on port 8000?");
+            }
+          }
+          
+          // Only reconnect if it wasn't a clean close and we haven't exceeded max attempts
+          if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts) {
+            reconnectAttempts++;
+            // Attempt to reconnect after 3 seconds
+            reconnectTimeout = setTimeout(() => {
+              connect();
+            }, 3000);
+          } else if (reconnectAttempts >= maxReconnectAttempts && hasConnectedOnce) {
+            console.warn("Max WebSocket reconnect attempts reached. Falling back to REST API polling.");
+            setError("WebSocket unavailable. Using REST API fallback.");
+            // Fallback to REST API polling every 10 seconds
+            fallbackInterval = setInterval(async () => {
+              try {
+                const res = await fetch(`${API_URL}/api/get_paired_markets`, {
+                  cache: "no-store",
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  setPairs(data);
+                  setError(null);
+                }
+              } catch (e) {
+                console.error("Fallback REST fetch error:", e);
+              }
+            }, 10000);
+          }
+        };
+      } catch (e) {
+        clearTimeout(connectionTimeout);
+        // Only log if we've connected before
+        if (hasConnectedOnce) {
+          console.error("Error creating WebSocket:", e);
+          setError(`Failed to establish WebSocket connection: ${e}. Check if backend is running.`);
+        }
+        setIsConnected(false);
+      }
+    };
+
+    // Initial connection
+    connect();
+
+    // Cleanup on unmount
+    return () => {
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      if (pingInterval) {
+        clearInterval(pingInterval);
+      }
+      if (fallbackInterval) {
+        clearInterval(fallbackInterval);
+      }
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, []);
+
+  return (
+    <div className="flex w-full flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight text-zinc-50">
+            Market pairs
+          </h2>
+          <p className="text-xs text-zinc-400">
+            Live updates via WebSocket
+            <span
+              className={cn(
+                "ml-2 inline-block h-2 w-2 rounded-full",
+                isConnected ? "bg-emerald-500" : "bg-red-500"
+              )}
+              title={isConnected ? "Connected" : "Disconnected"}
+            />
+          </p>
+        </div>
+        <div className="text-right text-xs text-zinc-500">
+          {pairs.length > 0 && (
+            <span>
+              {pairs.length} pair{pairs.length === 1 ? "" : "s"}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {error && (
+        <div className="rounded-lg border border-red-500/40 bg-red-950/40 px-3 py-2 text-xs text-red-200">
+          {error}
+        </div>
+      )}
+
+      {!error && pairs.length === 0 && (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-center text-sm text-zinc-400">
+          {isConnected
+            ? "Waiting for market pairs data..."
+            : "Connecting to server..."}
+        </div>
+      )}
+
+      {!error && pairs.length > 0 && (
+        <MarketPairCards pairs={pairs} budget={budget ?? null} />
+      )}
+    </div>
+  );
+}
+
