@@ -11,6 +11,7 @@ import {
   FilterOptions,
 } from "./FilterAndSortControls";
 import { calculateProfitWithBudget } from "@/lib/utils";
+import { useFavorites } from "@/hooks/useFavorites";
 
 interface MarketPairCardsProps {
   pairs: MarketPair[];
@@ -32,7 +33,9 @@ export function MarketPairCards({ pairs, budget }: MarketPairCardsProps) {
     maxShares: "",
     minBudgetProfit: "",
     maxBudgetProfit: "",
+    showFavoritesOnly: false,
   });
+  const { favorites, toggleFavorite, isFavorite } = useFavorites();
 
   const handleCardClick = (pair: MarketPair) => {
     setSelectedPair(pair);
@@ -49,6 +52,11 @@ export function MarketPairCards({ pairs, budget }: MarketPairCardsProps) {
     let filtered = pairs.filter((pair) => {
       const opp = pair.current_opportunity;
       if (!opp) return false; // Only show pairs with current opportunities
+
+      // Filter by favorites
+      if (filters.showFavoritesOnly && !favorites.has(pair.pair_id)) {
+        return false;
+      }
 
       // Filter by profit
       if (filters.minProfit) {
@@ -114,7 +122,7 @@ export function MarketPairCards({ pairs, budget }: MarketPairCardsProps) {
     });
 
     return filtered;
-  }, [pairs, sortConfig, filters, budget]);
+  }, [pairs, sortConfig, filters, budget, favorites]);
 
   return (
     <>
@@ -126,6 +134,7 @@ export function MarketPairCards({ pairs, budget }: MarketPairCardsProps) {
         resultCount={filteredAndSortedPairs.length}
         totalCount={pairs.length}
         budget={budget}
+        favoritesCount={favorites.size}
       />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {filteredAndSortedPairs.length === 0 ? (
@@ -139,6 +148,8 @@ export function MarketPairCards({ pairs, budget }: MarketPairCardsProps) {
               pair={pair}
               onClick={() => handleCardClick(pair)}
               budget={budget}
+              isFavorite={isFavorite(pair.pair_id)}
+              onToggleFavorite={() => toggleFavorite(pair.pair_id)}
             />
           ))
         )}

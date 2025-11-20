@@ -161,6 +161,20 @@ export function FilterAndSortControls({
               </div>
             </div>
           </div>
+          <label className="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={filters.showFavoritesOnly}
+              onChange={(e) => onFilterChange({ ...filters, showFavoritesOnly: e.target.checked })}
+              className="h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900 text-red-500 focus:ring-red-500/30"
+            />
+            <span className="text-xs text-zinc-400">
+              Favorites only
+              {favoritesCount > 0 && (
+                <span className="ml-1 text-red-400">({favoritesCount})</span>
+              )}
+            </span>
+          </label>
           <div className="text-xs text-zinc-500">
             Showing {resultCount} of {totalCount} pair{totalCount === 1 ? "" : "s"}
           </div>
