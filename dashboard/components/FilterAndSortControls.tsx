@@ -112,90 +112,94 @@ export function FilterAndSortControls({
 
   return (
     <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-950/60 p-4">
-      <div className="flex items-center justify-between">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-2">
-            <label className="text-xs font-medium text-zinc-400">Sort:</label>
-            <div className="flex items-center gap-2">
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] text-zinc-500">Primary</label>
-                <select
-                  value={sortConfig.primary}
-                  onChange={(e) => updateSort("primary", e.target.value as SortOption)}
-                  className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-50 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
-                >
-                  {getAvailableOptions("primary").map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] text-zinc-500">Secondary</label>
-                <select
-                  value={sortConfig.secondary}
-                  onChange={(e) => updateSort("secondary", e.target.value as SortOption)}
-                  className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-50 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
-                >
-                  {getAvailableOptions("secondary").map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] text-zinc-500">Tertiary</label>
-                <select
-                  value={sortConfig.tertiary}
-                  onChange={(e) => updateSort("tertiary", e.target.value as SortOption)}
-                  className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-50 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
-                >
-                  {getAvailableOptions("tertiary").map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        {/* Sort Controls */}
+        <div className="flex items-end gap-3">
+          <span className="pb-1.5 text-xs font-medium text-zinc-400">Sort:</span>
+          <div className="flex items-end gap-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-zinc-500">Primary</label>
+              <select
+                value={sortConfig.primary}
+                onChange={(e) => updateSort("primary", e.target.value as SortOption)}
+                className="w-[160px] rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-50 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+              >
+                {getAvailableOptions("primary").map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-zinc-500">Secondary</label>
+              <select
+                value={sortConfig.secondary}
+                onChange={(e) => updateSort("secondary", e.target.value as SortOption)}
+                className="w-[160px] rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-50 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+              >
+                {getAvailableOptions("secondary").map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-zinc-500">Tertiary</label>
+              <select
+                value={sortConfig.tertiary}
+                onChange={(e) => updateSort("tertiary", e.target.value as SortOption)}
+                className="w-[160px] rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-xs text-zinc-50 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+              >
+                {getAvailableOptions("tertiary").map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
+        </div>
+
+        {/* Right side controls */}
+        <div className="flex items-center gap-4">
           <label className="flex cursor-pointer items-center gap-2">
             <input
               type="checkbox"
               checked={filters.showFavoritesOnly}
               onChange={(e) => onFilterChange({ ...filters, showFavoritesOnly: e.target.checked })}
-              className="h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900 text-red-500 focus:ring-red-500/30"
+              className="h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900 text-white focus:ring-white/30"
             />
             <span className="text-xs text-zinc-400">
               Favorites only
               {favoritesCount > 0 && (
-                <span className="ml-1 text-red-400">({favoritesCount})</span>
+                <span className="ml-1 text-zinc-300">({favoritesCount})</span>
               )}
             </span>
           </label>
+          <div className="h-4 w-px bg-zinc-700" />
           <div className="text-xs text-zinc-500">
-            Showing {resultCount} of {totalCount} pair{totalCount === 1 ? "" : "s"}
+            {resultCount} of {totalCount} pair{totalCount === 1 ? "" : "s"}
           </div>
-        </div>
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-50"
-        >
-          Filters
-          {hasActiveFilters && (
-            <span className="ml-1 rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] text-emerald-400">
-              Active
-            </span>
-          )}
-          <ChevronDown
-            className={cn(
-              "h-3 w-3 transition-transform",
-              isExpanded && "rotate-180"
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-50"
+          >
+            Filters
+            {hasActiveFilters && (
+              <span className="rounded-full bg-emerald-500/20 px-1.5 py-0.5 text-[10px] text-emerald-400">
+                Active
+              </span>
             )}
-          />
-        </button>
+            <ChevronDown
+              className={cn(
+                "h-3 w-3 transition-transform",
+                isExpanded && "rotate-180"
+              )}
+            />
+          </button>
+        </div>
       </div>
 
       {isExpanded && (
