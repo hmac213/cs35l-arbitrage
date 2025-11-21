@@ -3,8 +3,19 @@
 import os
 import logging
 import requests
-from typing import List, Optional, Callable
+import asyncio
+import json
+import time
+import base64
+from typing import List, Optional, Callable, Dict, Any
 from datetime import datetime
+
+try:
+    import websockets
+    WEBSOCKETS_AVAILABLE = True
+except ImportError:
+    WEBSOCKETS_AVAILABLE = False
+    websockets = None
 
 from kalshi_python import Configuration, KalshiClient as KalshiSDKClient
 from kalshi_python.exceptions import ApiException
@@ -79,6 +90,16 @@ class KalshiClient(ExchangeClient):
             config.private_key_pem = private_key_content
         
         self.sdk_client = KalshiSDKClient(config)
+        
+        # Websocket connection state
+        self._ws_url = "wss://api.elections.kalshi.com/trade-api/ws/v2"
+        self._ws_connection: Optional[Any] = None
+        self._ws_task: Optional[asyncio.Task] = None
+        self._ws_subscriptions: Dict[str, Callable[[OrderBook], None]] = {}
+        self._ws_running = False
+        self._api_key_id = api_key_id or os.getenv("KALSHI_API_KEY_ID")
+        self._private_key_content = private_key_content
+        self._message_id = 1  # Message ID counter for websocket commands
 
     def fetch_all_markets(
         self,
@@ -811,3 +832,430 @@ class KalshiClient(ExchangeClient):
             timestamp=timestamp,
             metadata=orderbook_data
         )
+    
+    async def connect_websocket(self) -> None:
+        """Connect to Kalshi websocket for real-time orderbook updates.
+        
+        Raises:
+            KalshiAPIError: If websockets library is not available or connection fails.
+        """
+        if not WEBSOCKETS_AVAILABLE:
+            raise KalshiAPIError("websockets library is not installed. Install it with: pip install websockets")
+        
+        if self._ws_connection is not None:
+            logger.warning("Websocket already connected")
+            return
+        
+        try:
+            # Prepare authentication headers if API key and private key are available
+            headers = {}
+            if not self._api_key_id:
+                raise KalshiAPIError("KALSHI_API_KEY_ID is required for websocket authentication")
+            if not self._private_key_content:
+                raise KalshiAPIError("KALSHI_PRIVATE_KEY is required for websocket authentication")
+            
+            if self._api_key_id and self._private_key_content:
+                # Kalshi websocket requires signed authentication
+                # According to docs: https://docs.kalshi.com/getting_started/quick_start_websockets
+                # Message to sign: timestamp + "GET" + "/trade-api/ws/v2"
+                timestamp = str(int(time.time() * 1000))
+                method = "GET"
+                path = "/trade-api/ws/v2"
+                msg_string = timestamp + method + path
+                
+                try:
+                    from cryptography.hazmat.primitives import hashes, serialization
+                    from cryptography.hazmat.primitives.asymmetric import padding
+                    from cryptography.hazmat.backends import default_backend
+                    
+                    # Load private key - ensure it's bytes
+                    if isinstance(self._private_key_content, str):
+                        private_key_bytes = self._private_key_content.encode('utf-8')
+                    else:
+                        private_key_bytes = self._private_key_content
+                    
+                    private_key = serialization.load_pem_private_key(
+                        private_key_bytes,
+                        password=None,
+                        backend=default_backend()
+                    )
+                    
+                    # Sign using RSA-PSS (not PKCS1v15!)
+                    # Docs specify: RSA-PSS with MGF1 and SHA256
+                    # Message format: timestamp + "GET" + "/trade-api/ws/v2"
+                    signature = private_key.sign(
+                        msg_string.encode('utf-8'),
+                        padding.PSS(
+                            mgf=padding.MGF1(hashes.SHA256()),
+                            salt_length=padding.PSS.DIGEST_LENGTH
+                        ),
+                        hashes.SHA256()
+                    )
+                    # Base64 encode the signature (not hex!)
+                    signature_b64 = base64.b64encode(signature).decode('utf-8')
+                    
+                    headers['KALSHI-ACCESS-KEY'] = self._api_key_id
+                    headers['KALSHI-ACCESS-SIGNATURE'] = signature_b64
+                    headers['KALSHI-ACCESS-TIMESTAMP'] = timestamp
+                    
+                    logger.debug(f"Generated websocket auth headers: key={self._api_key_id[:8]}..., timestamp={timestamp}, signature_length={len(signature_b64)}")
+                except ImportError:
+                    logger.error("cryptography library not available, websocket authentication will fail")
+                    raise KalshiAPIError("cryptography library is required for websocket authentication")
+                except Exception as e:
+                    logger.error(f"Failed to generate signature: {e}", exc_info=True)
+                    raise KalshiAPIError(f"Failed to generate websocket signature: {e}") from e
+            
+            # Connect to websocket with authentication
+            # websockets library uses 'additional_headers' parameter
+            connect_kwargs = {
+                'ping_interval': 30,  # Send ping every 30 seconds
+                'ping_timeout': 10
+            }
+            if headers:
+                # Convert headers dict to list of tuples for websockets library
+                additional_headers = [(k, v) for k, v in headers.items()]
+                connect_kwargs['additional_headers'] = additional_headers
+                logger.debug(f"Connecting with headers: {list(headers.keys())}")
+            else:
+                logger.warning("No authentication headers generated, connection may fail")
+            
+            self._ws_connection = await websockets.connect(
+                self._ws_url,
+                **connect_kwargs
+            )
+            self._ws_running = True
+            
+            # Start message handler task
+            self._ws_task = asyncio.create_task(self._ws_message_handler())
+            
+            logger.info("Connected to Kalshi websocket")
+        except Exception as e:
+            self._ws_connection = None
+            self._ws_running = False
+            raise KalshiAPIError(f"Failed to connect to Kalshi websocket: {e}") from e
+    
+    async def disconnect_websocket(self) -> None:
+        """Disconnect from Kalshi websocket."""
+        self._ws_running = False
+        
+        if self._ws_task:
+            self._ws_task.cancel()
+            try:
+                await self._ws_task
+            except asyncio.CancelledError:
+                pass
+            self._ws_task = None
+        
+        if self._ws_connection:
+            try:
+                await self._ws_connection.close()
+            except Exception as e:
+                logger.warning(f"Error closing websocket: {e}")
+            self._ws_connection = None
+        
+        self._ws_subscriptions.clear()
+        logger.info("Disconnected from Kalshi websocket")
+    
+    async def subscribe_orderbooks_batch(
+        self,
+        market_tickers: List[str],
+        callbacks: Dict[str, Callable[[OrderBook], None]]
+    ) -> None:
+        """Subscribe to orderbook updates for multiple markets at once.
+        
+        This is more efficient than subscribing individually.
+        
+        Args:
+            market_tickers: List of Kalshi market ticker symbols.
+            callbacks: Dictionary mapping ticker to callback function.
+        
+        Raises:
+            KalshiAPIError: If websocket is not connected or subscription fails.
+        """
+        if self._ws_connection is None or not self._ws_running:
+            raise KalshiAPIError("Websocket is not connected. Call connect_websocket() first.")
+        
+        if not market_tickers:
+            return
+        
+        # Store all subscriptions
+        self._ws_subscriptions.update(callbacks)
+        
+        # Send batch subscription message using Kalshi's subscribe command format
+        # According to docs: https://docs.kalshi.com/getting_started/quick_start_websockets
+        # Format: {"id": 1, "cmd": "subscribe", "params": {"channels": ["orderbook_delta"], "market_tickers": [...]}}
+        subscribe_msg = {
+            "id": self._message_id,
+            "cmd": "subscribe",
+            "params": {
+                "channels": ["orderbook_delta"],
+                "market_tickers": market_tickers
+            }
+        }
+        self._message_id += 1
+        
+        try:
+            await self._ws_connection.send(json.dumps(subscribe_msg))
+            logger.info(f"Subscribed to orderbook updates for {len(market_tickers)} Kalshi markets")
+        except Exception as e:
+            # Remove subscriptions on failure
+            for ticker in market_tickers:
+                self._ws_subscriptions.pop(ticker, None)
+            raise KalshiAPIError(f"Failed to subscribe to markets: {e}") from e
+    
+    async def subscribe_orderbook(
+        self,
+        market_ticker: str,
+        callback: Callable[[OrderBook], None]
+    ) -> None:
+        """Subscribe to orderbook updates for a single market.
+        
+        For multiple markets, use subscribe_orderbooks_batch() instead.
+        
+        Args:
+            market_ticker: The Kalshi market ticker symbol.
+            callback: Callback function that receives OrderBook updates.
+        
+        Raises:
+            KalshiAPIError: If websocket is not connected or subscription fails.
+        """
+        await self.subscribe_orderbooks_batch([market_ticker], {market_ticker: callback})
+    
+    async def unsubscribe_orderbook(self, market_ticker: str) -> None:
+        """Unsubscribe from orderbook updates for a specific market.
+        
+        Args:
+            market_ticker: The Kalshi market ticker symbol.
+        """
+        if market_ticker not in self._ws_subscriptions:
+            return
+        
+        if self._ws_connection is not None:
+            # Send unsubscribe message (if Kalshi supports it)
+            # Note: Kalshi docs don't specify unsubscribe format, so we just remove from subscriptions
+            # The connection will stop sending updates when we disconnect
+            pass
+        
+        del self._ws_subscriptions[market_ticker]
+        logger.info(f"Unsubscribed from orderbook updates for {market_ticker}")
+    
+    async def _ws_message_handler(self) -> None:
+        """Handle incoming websocket messages."""
+        max_reconnect_delay = 60
+        reconnect_delay = 1
+        
+        while self._ws_running:
+            try:
+                if self._ws_connection is None:
+                    break
+                
+                # Receive message with timeout
+                try:
+                    message = await asyncio.wait_for(
+                        self._ws_connection.recv(),
+                        timeout=60.0
+                    )
+                except asyncio.TimeoutError:
+                    # Send ping to keep connection alive
+                    if self._ws_connection:
+                        try:
+                            await self._ws_connection.ping()
+                        except Exception:
+                            pass
+                    continue
+                
+                # Parse message
+                try:
+                    data = json.loads(message)
+                except json.JSONDecodeError:
+                    logger.warning(f"Received invalid JSON from websocket: {message}")
+                    continue
+                
+                # Handle different message types
+                # According to docs: https://docs.kalshi.com/getting_started/quick_start_websockets
+                # Message types: subscribed, orderbook_snapshot, orderbook_delta, error
+                msg_type = data.get("type")
+                
+                if msg_type == "subscribed":
+                    # Confirmation of subscription
+                    logger.debug(f"Subscription confirmed: {data}")
+                elif msg_type == "orderbook_snapshot":
+                    # Full orderbook snapshot
+                    ticker = data.get("data", {}).get("market_ticker")
+                    if ticker and ticker in self._ws_subscriptions:
+                        try:
+                            orderbook = self._parse_websocket_orderbook(data)
+                            callback = self._ws_subscriptions[ticker]
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback(orderbook)
+                            else:
+                                loop = asyncio.get_event_loop()
+                                await loop.run_in_executor(None, callback, orderbook)
+                        except Exception as e:
+                            logger.error(f"Error processing orderbook snapshot for {ticker}: {e}", exc_info=True)
+                elif msg_type == "orderbook_delta":
+                    # Incremental orderbook update
+                    ticker = data.get("data", {}).get("market_ticker")
+                    if ticker and ticker in self._ws_subscriptions:
+                        try:
+                            orderbook = self._parse_websocket_orderbook(data)
+                            callback = self._ws_subscriptions[ticker]
+                            # Call callback in thread-safe way
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback(orderbook)
+                            else:
+                                # Run in executor if callback is sync
+                                loop = asyncio.get_event_loop()
+                                await loop.run_in_executor(None, callback, orderbook)
+                        except Exception as e:
+                            logger.error(f"Error processing orderbook update for {ticker}: {e}", exc_info=True)
+                elif msg_type == "error":
+                    # Error response format: {"id": 123, "type": "error", "msg": {"code": 6, "msg": "..."}}
+                    error_msg = data.get("msg", {})
+                    error_code = error_msg.get("code", "unknown")
+                    error_text = error_msg.get("msg", "Unknown error")
+                    logger.error(f"Websocket error {error_code}: {error_text}")
+                else:
+                    logger.debug(f"Received unknown message type: {msg_type}, data keys: {list(data.keys())}")
+                
+                # Reset reconnect delay on successful message
+                reconnect_delay = 1
+                
+            except websockets.exceptions.ConnectionClosed:
+                logger.warning("Websocket connection closed, attempting to reconnect...")
+                await self._reconnect_websocket(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+            except Exception as e:
+                logger.error(f"Error in websocket message handler: {e}", exc_info=True)
+                await asyncio.sleep(1)
+    
+    async def _reconnect_websocket(self, delay: float) -> None:
+        """Reconnect to websocket after a delay.
+        
+        Args:
+            delay: Delay in seconds before reconnecting.
+        """
+        await asyncio.sleep(delay)
+        
+        if not self._ws_running:
+            return
+        
+        try:
+            # Close old connection if exists
+            if self._ws_connection:
+                try:
+                    await self._ws_connection.close()
+                except Exception:
+                    pass
+                self._ws_connection = None
+            
+            # Reconnect with authentication
+            headers = {}
+            if self._api_key_id and self._private_key_content:
+                # Generate authentication headers (same as initial connection)
+                timestamp = str(int(time.time() * 1000))
+                method = "GET"
+                path = "/trade-api/ws/v2"
+                msg_string = timestamp + method + path
+                
+                try:
+                    from cryptography.hazmat.primitives import hashes, serialization
+                    from cryptography.hazmat.primitives.asymmetric import padding
+                    from cryptography.hazmat.backends import default_backend
+                    
+                    # Load private key - ensure it's bytes
+                    if isinstance(self._private_key_content, str):
+                        private_key_bytes = self._private_key_content.encode('utf-8')
+                    else:
+                        private_key_bytes = self._private_key_content
+                    
+                    private_key = serialization.load_pem_private_key(
+                        private_key_bytes,
+                        password=None,
+                        backend=default_backend()
+                    )
+                    
+                    # Sign using RSA-PSS
+                    signature = private_key.sign(
+                        msg_string.encode('utf-8'),
+                        padding.PSS(
+                            mgf=padding.MGF1(hashes.SHA256()),
+                            salt_length=padding.PSS.DIGEST_LENGTH
+                        ),
+                        hashes.SHA256()
+                    )
+                    signature_b64 = base64.b64encode(signature).decode('utf-8')
+                    
+                    headers['KALSHI-ACCESS-KEY'] = self._api_key_id
+                    headers['KALSHI-ACCESS-SIGNATURE'] = signature_b64
+                    headers['KALSHI-ACCESS-TIMESTAMP'] = timestamp
+                except Exception as e:
+                    logger.error(f"Failed to generate signature for reconnect: {e}", exc_info=True)
+                    raise
+            
+            connect_kwargs = {
+                'ping_interval': 30,
+                'ping_timeout': 10
+            }
+            if headers:
+                connect_kwargs['additional_headers'] = list(headers.items())
+            
+            self._ws_connection = await websockets.connect(
+                self._ws_url,
+                **connect_kwargs
+            )
+            
+            # Resubscribe to all markets in batch
+            if self._ws_subscriptions:
+                tickers = list(self._ws_subscriptions.keys())
+                subscribe_msg = {
+                    "id": self._message_id,
+                    "cmd": "subscribe",
+                    "params": {
+                        "channels": ["orderbook_delta"],
+                        "market_tickers": tickers
+                    }
+                }
+                self._message_id += 1
+                try:
+                    await self._ws_connection.send(json.dumps(subscribe_msg))
+                    logger.info(f"Resubscribed to {len(tickers)} Kalshi markets")
+                except Exception as e:
+                    logger.warning(f"Failed to resubscribe to markets: {e}")
+            
+            logger.info("Reconnected to Kalshi websocket")
+        except Exception as e:
+            logger.error(f"Failed to reconnect to websocket: {e}")
+    
+    def _parse_websocket_orderbook(self, data: Dict[str, Any]) -> OrderBook:
+        """Parse websocket orderbook message into OrderBook model.
+        
+        Handles both orderbook_snapshot (full orderbook) and orderbook_delta (incremental updates).
+        According to docs: https://docs.kalshi.com/getting_started/quick_start_websockets
+        
+        Args:
+            data: Raw websocket message data with structure: {"type": "...", "data": {...}}
+        
+        Returns:
+            OrderBook instance.
+        """
+        # Extract data from message structure
+        msg_data = data.get("data", data)
+        ticker = msg_data.get("market_ticker", "")
+        msg_type = data.get("type")
+        
+        # For orderbook_snapshot and orderbook_delta, the orderbook data is in the "data" field
+        # Use the data field directly for normalization
+        orderbook_data = msg_data
+        
+        # Use existing normalization logic
+        return self._normalize_orderbook(ticker, orderbook_data)
+    
+    def is_websocket_connected(self) -> bool:
+        """Check if websocket is connected.
+        
+        Returns:
+            True if connected, False otherwise.
+        """
+        return self._ws_connection is not None and self._ws_running
