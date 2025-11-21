@@ -22,7 +22,8 @@ class ArbitrageService:
         db_client: Optional[SupabaseClient] = None,
         orderbook_poller: Optional[OrderbookPoller] = None,
         arbitrage_calculator: Optional[ArbitrageCalculator] = None,
-        poll_interval: Optional[int] = None
+        poll_interval: Optional[int] = None,
+        use_stored_orderbooks: bool = False
     ):
         """Initialize the arbitrage service.
         
@@ -31,11 +32,14 @@ class ArbitrageService:
             orderbook_poller: OrderbookPoller instance. If None, creates a new one.
             arbitrage_calculator: ArbitrageCalculator instance. If None, creates a new one.
             poll_interval: Polling interval in seconds. If None, uses config.
+            use_stored_orderbooks: If True, calculate from stored orderbooks instead of polling.
+                                  Useful when websockets are streaming orderbooks.
         """
         self.db_client = db_client or SupabaseClient()
         self.orderbook_poller = orderbook_poller or OrderbookPoller(db_client=self.db_client)
         self.arbitrage_calculator = arbitrage_calculator or ArbitrageCalculator()
         self.poll_interval = poll_interval or EngineConfig.ORDERBOOK_POLL_INTERVAL
+        self.use_stored_orderbooks = use_stored_orderbooks
         
         self._running = False
         self._thread: Optional[threading.Thread] = None
@@ -66,19 +70,39 @@ class ArbitrageService:
         
         for pair in market_pairs:
             try:
-                # Poll orderbooks for both markets
-                orderbook1, orderbook2 = self.orderbook_poller.poll_market_pair(pair)
+                if self.use_stored_orderbooks:
+                    # Use latest stored orderbooks instead of polling
+                    # Get market details to know exchange
+                    market1 = self.orderbook_poller._get_market_by_id(pair.market_1_id)
+                    market2 = self.orderbook_poller._get_market_by_id(pair.market_2_id)
+                    
+                    if not market1 or not market2:
+                        logger.debug(f"[ARBITRAGE] Skipping pair {pair.id} - market(s) not found")
+                        stats['errors'] += 1
+                        continue
+                    
+                    orderbook1 = self.db_client.get_latest_orderbook(pair.market_1_id, market1.exchange)
+                    orderbook2 = self.db_client.get_latest_orderbook(pair.market_2_id, market2.exchange)
+                else:
+                    # Poll orderbooks for both markets
+                    orderbook1, orderbook2 = self.orderbook_poller.poll_market_pair(pair)
+                    
+                    if not orderbook1 or not orderbook2:
+                        # Missing orderbooks are expected for some markets - skip, don't error
+                        logger.debug(f"[ARBITRAGE] Skipping pair {pair.id} - orderbook(s) not available")
+                        stats['errors'] += 1
+                        continue
+                    
+                    # Store orderbooks
+                    self.db_client.store_orderbook(orderbook1)
+                    self.db_client.store_orderbook(orderbook2)
+                    stats['orderbooks_stored'] += 2
                 
                 if not orderbook1 or not orderbook2:
-                    # Missing orderbooks are expected for some markets - skip, don't error
+                    # Missing orderbooks - skip
                     logger.debug(f"[ARBITRAGE] Skipping pair {pair.id} - orderbook(s) not available")
                     stats['errors'] += 1
                     continue
-                
-                # Store orderbooks
-                self.db_client.store_orderbook(orderbook1)
-                self.db_client.store_orderbook(orderbook2)
-                stats['orderbooks_stored'] += 2
                 
                 # Calculate arbitrage opportunity (buy YES on one exchange, NO on the other)
                 opportunity = self.arbitrage_calculator.calculate_arbitrage(
