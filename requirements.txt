@@ -5,8 +5,11 @@ python-dotenv
 pytest
 pytest-cov
 pytest-mock
+pytest-asyncio
 openai
 httpx
 fastapi
 uvicorn[standard]
 python-multipart
+websockets
+cryptography
