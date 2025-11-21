@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Heart } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type SortOption =
@@ -164,20 +164,26 @@ export function FilterAndSortControls({
 
         {/* Right side controls */}
         <div className="flex items-center gap-4">
-          <label className="flex cursor-pointer items-center gap-2">
-            <input
-              type="checkbox"
-              checked={filters.showFavoritesOnly}
-              onChange={(e) => onFilterChange({ ...filters, showFavoritesOnly: e.target.checked })}
-              className="h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-900 text-white focus:ring-white/30"
-            />
-            <span className="text-xs text-zinc-400">
-              Favorites only
-              {favoritesCount > 0 && (
-                <span className="ml-1 text-zinc-300">({favoritesCount})</span>
+          <button
+            onClick={() => onFilterChange({ ...filters, showFavoritesOnly: !filters.showFavoritesOnly })}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs transition",
+              filters.showFavoritesOnly
+                ? "border-zinc-600 bg-zinc-800 text-zinc-200"
+                : "border-zinc-700 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300"
+            )}
+          >
+            <Heart
+              className={cn(
+                "h-3.5 w-3.5",
+                filters.showFavoritesOnly ? "fill-white text-white" : ""
               )}
-            </span>
-          </label>
+            />
+            Favorites
+            {favoritesCount > 0 && (
+              <span className="text-zinc-500">({favoritesCount})</span>
+            )}
+          </button>
           <div className="h-4 w-px bg-zinc-700" />
           <div className="text-xs text-zinc-500">
             {resultCount} of {totalCount} pair{totalCount === 1 ? "" : "s"}
