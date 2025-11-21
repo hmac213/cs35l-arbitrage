@@ -1,5 +1,6 @@
 "use client";
 
+import { Heart } from "lucide-react";
 import { MarketPair } from "@/types/api";
 import { cn, formatDateTime, calculateProfitWithBudget, formatCurrency, formatPercentage } from "@/lib/utils";
 
@@ -178,12 +179,17 @@ export function MarketPairCard({ pair, onClick, budget, isFavorite, onToggleFavo
               e.stopPropagation();
               onToggleFavorite();
             }}
-            className="rounded-full p-1 transition hover:bg-zinc-800"
+            className="rounded-full p-1.5 transition hover:bg-zinc-800"
             aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
           >
-            <span className="text-lg">
-              {isFavorite ? "❤️" : "🤍"}
-            </span>
+            <Heart
+              className={cn(
+                "h-4 w-4 transition-colors",
+                isFavorite
+                  ? "fill-white text-white"
+                  : "text-zinc-500 hover:text-zinc-300"
+              )}
+            />
           </button>
           <OpportunityBadge pair={pair} />
         </div>
