@@ -3,8 +3,17 @@
 import requests
 import logging
 import time
+import asyncio
+import json
 from typing import List, Optional, Dict, Any, Callable
 from datetime import datetime
+
+try:
+    import websockets
+    WEBSOCKETS_AVAILABLE = True
+except ImportError:
+    WEBSOCKETS_AVAILABLE = False
+    websockets = None
 
 from ..base import ExchangeClient
 from ..models import Market, OrderBook, OrderBookEntry, MarketMetadata
@@ -58,6 +67,14 @@ class PolymarketClient(ExchangeClient):
             self.session.headers.update({
                 'Authorization': f'Bearer {api_key}',
             })
+        
+        # Websocket connection state
+        self._ws_url = "wss://ws-live-data.polymarket.com"
+        self._ws_connection: Optional[Any] = None
+        self._ws_task: Optional[asyncio.Task] = None
+        self._ws_ping_task: Optional[asyncio.Task] = None
+        self._ws_subscriptions: Dict[str, Callable[[OrderBook], None]] = {}
+        self._ws_running = False
 
     def _make_gamma_request(
         self,
@@ -670,3 +687,296 @@ class PolymarketClient(ExchangeClient):
             timestamp=timestamp,
             metadata=orderbook_data
         )
+    
+    async def connect_websocket(self) -> None:
+        """Connect to Polymarket websocket for real-time orderbook updates.
+        
+        Raises:
+            PolymarketAPIError: If websockets library is not available or connection fails.
+        """
+        if not WEBSOCKETS_AVAILABLE:
+            raise PolymarketAPIError("websockets library is not installed. Install it with: pip install websockets")
+        
+        if self._ws_connection is not None:
+            logger.warning("Websocket already connected")
+            return
+        
+        try:
+            # Connect to websocket
+            # Polymarket may require authentication headers
+            headers = {}
+            if self.api_key:
+                headers['Authorization'] = f'Bearer {self.api_key}'
+            
+            connect_kwargs = {}
+            if headers:
+                connect_kwargs['additional_headers'] = list(headers.items())
+            
+            self._ws_connection = await websockets.connect(
+                self._ws_url,
+                **connect_kwargs
+            )
+            self._ws_running = True
+            
+            # Start message handler task
+            self._ws_task = asyncio.create_task(self._ws_message_handler())
+            
+            # Start ping task (send PING every 5 seconds)
+            self._ws_ping_task = asyncio.create_task(self._ws_ping_handler())
+            
+            logger.info("Connected to Polymarket websocket")
+        except Exception as e:
+            self._ws_connection = None
+            self._ws_running = False
+            raise PolymarketAPIError(f"Failed to connect to Polymarket websocket: {e}") from e
+    
+    async def disconnect_websocket(self) -> None:
+        """Disconnect from Polymarket websocket."""
+        self._ws_running = False
+        
+        if self._ws_ping_task:
+            self._ws_ping_task.cancel()
+            try:
+                await self._ws_ping_task
+            except asyncio.CancelledError:
+                pass
+            self._ws_ping_task = None
+        
+        if self._ws_task:
+            self._ws_task.cancel()
+            try:
+                await self._ws_task
+            except asyncio.CancelledError:
+                pass
+            self._ws_task = None
+        
+        if self._ws_connection:
+            try:
+                await self._ws_connection.close()
+            except Exception as e:
+                logger.warning(f"Error closing websocket: {e}")
+            self._ws_connection = None
+        
+        self._ws_subscriptions.clear()
+        logger.info("Disconnected from Polymarket websocket")
+    
+    async def subscribe_orderbook(
+        self,
+        token_id: str,
+        callback: Callable[[OrderBook], None]
+    ) -> None:
+        """Subscribe to orderbook updates for a specific market.
+        
+        Args:
+            token_id: The Polymarket token_id (hex string).
+            callback: Callback function that receives OrderBook updates.
+        
+        Raises:
+            PolymarketAPIError: If websocket is not connected or subscription fails.
+        """
+        if self._ws_connection is None or not self._ws_running:
+            raise PolymarketAPIError("Websocket is not connected. Call connect_websocket() first.")
+        
+        # Store subscription
+        self._ws_subscriptions[token_id] = callback
+        
+        # Send subscription message
+        # Polymarket RTDS format: {"type": "subscribe", "channel": "orderbook", "token_id": "0x..."}
+        subscribe_msg = {
+            "type": "subscribe",
+            "channel": "orderbook",
+            "token_id": token_id
+        }
+        
+        try:
+            await self._ws_connection.send(json.dumps(subscribe_msg))
+            logger.info(f"Subscribed to orderbook updates for {token_id}")
+        except Exception as e:
+            del self._ws_subscriptions[token_id]
+            raise PolymarketAPIError(f"Failed to subscribe to {token_id}: {e}") from e
+    
+    async def unsubscribe_orderbook(self, token_id: str) -> None:
+        """Unsubscribe from orderbook updates for a specific market.
+        
+        Args:
+            token_id: The Polymarket token_id.
+        """
+        if token_id not in self._ws_subscriptions:
+            return
+        
+        if self._ws_connection is not None:
+            # Send unsubscribe message
+            unsubscribe_msg = {
+                "type": "unsubscribe",
+                "channel": "orderbook",
+                "token_id": token_id
+            }
+            try:
+                await self._ws_connection.send(json.dumps(unsubscribe_msg))
+            except Exception as e:
+                logger.warning(f"Error unsubscribing from {token_id}: {e}")
+        
+        del self._ws_subscriptions[token_id]
+        logger.info(f"Unsubscribed from orderbook updates for {token_id}")
+    
+    async def _ws_ping_handler(self) -> None:
+        """Send PING messages every 5 seconds to keep connection alive."""
+        while self._ws_running:
+            try:
+                await asyncio.sleep(5)
+                if self._ws_connection and self._ws_running:
+                    ping_msg = {"type": "PING"}
+                    try:
+                        await self._ws_connection.send(json.dumps(ping_msg))
+                    except Exception as e:
+                        logger.warning(f"Error sending PING: {e}")
+                        break
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Error in ping handler: {e}")
+                break
+    
+    async def _ws_message_handler(self) -> None:
+        """Handle incoming websocket messages."""
+        max_reconnect_delay = 60
+        reconnect_delay = 1
+        
+        while self._ws_running:
+            try:
+                if self._ws_connection is None:
+                    break
+                
+                # Receive message
+                try:
+                    message = await asyncio.wait_for(
+                        self._ws_connection.recv(),
+                        timeout=10.0
+                    )
+                except asyncio.TimeoutError:
+                    continue
+                
+                # Parse message
+                try:
+                    data = json.loads(message)
+                except json.JSONDecodeError:
+                    logger.warning(f"Received invalid JSON from websocket: {message}")
+                    continue
+                
+                # Handle different message types
+                msg_type = data.get("type")
+                
+                if msg_type == "PONG":
+                    # Pong response, connection is alive
+                    continue
+                elif msg_type == "orderbook" or "token_id" in data:
+                    # Orderbook update
+                    token_id = data.get("token_id")
+                    if token_id and token_id in self._ws_subscriptions:
+                        try:
+                            orderbook = self._parse_websocket_orderbook(data)
+                            callback = self._ws_subscriptions[token_id]
+                            # Call callback in thread-safe way
+                            if asyncio.iscoroutinefunction(callback):
+                                await callback(orderbook)
+                            else:
+                                # Run in executor if callback is sync
+                                loop = asyncio.get_event_loop()
+                                await loop.run_in_executor(None, callback, orderbook)
+                        except Exception as e:
+                            logger.error(f"Error processing orderbook update for {token_id}: {e}", exc_info=True)
+                elif msg_type == "error":
+                    logger.error(f"Websocket error: {data.get('message', 'Unknown error')}")
+                else:
+                    logger.debug(f"Received unknown message type: {msg_type}")
+                
+                # Reset reconnect delay on successful message
+                reconnect_delay = 1
+                
+            except websockets.exceptions.ConnectionClosed:
+                logger.warning("Websocket connection closed, attempting to reconnect...")
+                await self._reconnect_websocket(reconnect_delay)
+                reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
+            except Exception as e:
+                logger.error(f"Error in websocket message handler: {e}", exc_info=True)
+                await asyncio.sleep(1)
+    
+    async def _reconnect_websocket(self, delay: float) -> None:
+        """Reconnect to websocket after a delay.
+        
+        Args:
+            delay: Delay in seconds before reconnecting.
+        """
+        await asyncio.sleep(delay)
+        
+        if not self._ws_running:
+            return
+        
+        try:
+            # Close old connection if exists
+            if self._ws_connection:
+                try:
+                    await self._ws_connection.close()
+                except Exception:
+                    pass
+                self._ws_connection = None
+            
+            # Reconnect
+            headers = {}
+            if self.api_key:
+                headers['Authorization'] = f'Bearer {self.api_key}'
+            
+            connect_kwargs = {}
+            if headers:
+                connect_kwargs['additional_headers'] = list(headers.items())
+            
+            self._ws_connection = await websockets.connect(
+                self._ws_url,
+                **connect_kwargs
+            )
+            
+            # Restart ping task
+            if self._ws_ping_task:
+                self._ws_ping_task.cancel()
+            self._ws_ping_task = asyncio.create_task(self._ws_ping_handler())
+            
+            # Resubscribe to all markets
+            for token_id in list(self._ws_subscriptions.keys()):
+                subscribe_msg = {
+                    "type": "subscribe",
+                    "channel": "orderbook",
+                    "token_id": token_id
+                }
+                try:
+                    await self._ws_connection.send(json.dumps(subscribe_msg))
+                except Exception as e:
+                    logger.warning(f"Failed to resubscribe to {token_id}: {e}")
+            
+            logger.info("Reconnected to Polymarket websocket")
+        except Exception as e:
+            logger.error(f"Failed to reconnect to websocket: {e}")
+    
+    def _parse_websocket_orderbook(self, data: Dict[str, Any]) -> OrderBook:
+        """Parse websocket orderbook message into OrderBook model.
+        
+        Args:
+            data: Raw websocket message data.
+        
+        Returns:
+            OrderBook instance.
+        """
+        token_id = data.get("token_id", "")
+        
+        # Extract orderbook data - structure may vary
+        orderbook_data = data.get("orderbook", data)
+        
+        # Use existing normalization logic
+        return self._normalize_orderbook(token_id, orderbook_data)
+    
+    def is_websocket_connected(self) -> bool:
+        """Check if websocket is connected.
+        
+        Returns:
+            True if connected, False otherwise.
+        """
+        return self._ws_connection is not None and self._ws_running
