@@ -11,6 +11,7 @@ export type SortOption =
   | "profit_with_budget"
   | "max_size"
   | "spread"
+  | "cashout_date"
   | "none";
 
 export interface SortConfig {
@@ -46,6 +47,7 @@ const SORT_OPTIONS: Array<{ value: SortOption; label: string }> = [
   { value: "profit_with_budget", label: "Profit with your budget" },
   { value: "max_size", label: "Total shares to trade" },
   { value: "spread", label: "Spread" },
+  { value: "cashout_date", label: "Cash out date" },
 ];
 
 export function FilterAndSortControls({
