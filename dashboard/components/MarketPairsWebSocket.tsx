@@ -221,30 +221,14 @@ export function MarketPairsWebSocket({ budget }: MarketPairsWebSocketProps) {
   }, []);
 
   return (
-    <div className="flex w-full flex-col gap-4">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h2 className="text-sm font-semibold tracking-tight text-zinc-50">
-            Market pairs
-          </h2>
-          <p className="text-xs text-zinc-400">
-            Live updates via WebSocket
-            <span
-              className={cn(
-                "ml-2 inline-block h-2 w-2 rounded-full",
-                isConnected ? "bg-emerald-500" : "bg-red-500"
-              )}
-              title={isConnected ? "Connected" : "Disconnected"}
-            />
-          </p>
-        </div>
-        <div className="text-right text-xs text-zinc-500">
-          {pairs.length > 0 && (
-            <span>
-              {pairs.length} pair{pairs.length === 1 ? "" : "s"}
-            </span>
-          )}
-        </div>
+    <div className="flex w-full flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-50">
+          Market Pairs
+        </h1>
+        <p className="mt-1 text-sm text-zinc-400">
+          Find arbitrage opportunities across prediction markets
+        </p>
       </div>
 
       {error && (
@@ -264,6 +248,24 @@ export function MarketPairsWebSocket({ budget }: MarketPairsWebSocketProps) {
       {!error && pairs.length > 0 && (
         <MarketPairCards pairs={pairs} budget={budget ?? null} />
       )}
+
+      {/* WebSocket Status Indicator */}
+      <div className="flex items-center justify-center gap-2 py-4 text-xs text-zinc-500">
+        <span
+          className={cn(
+            "h-2 w-2 rounded-full",
+            isConnected ? "bg-emerald-500" : "bg-red-500"
+          )}
+        />
+        <span>
+          {isConnected ? "Live updates via WebSocket" : "Disconnected"}
+        </span>
+        {pairs.length > 0 && (
+          <span className="text-zinc-600">
+            · {pairs.length} pair{pairs.length === 1 ? "" : "s"} loaded
+          </span>
+        )}
+      </div>
     </div>
   );
 }
