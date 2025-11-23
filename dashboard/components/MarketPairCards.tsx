@@ -16,9 +16,10 @@ import { useFavorites } from "@/hooks/useFavorites";
 interface MarketPairCardsProps {
   pairs: MarketPair[];
   budget: number | null;
+  searchQuery?: string;
 }
 
-export function MarketPairCards({ pairs, budget }: MarketPairCardsProps) {
+export function MarketPairCards({ pairs, budget, searchQuery = "" }: MarketPairCardsProps) {
   const [selectedPair, setSelectedPair] = useState<MarketPair | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState<SortConfig>({
@@ -52,6 +53,16 @@ export function MarketPairCards({ pairs, budget }: MarketPairCardsProps) {
     let filtered = pairs.filter((pair) => {
       const opp = pair.current_opportunity;
       if (!opp) return false; // Only show pairs with current opportunities
+
+      // Filter by search query
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const market1Name = pair.market_1?.name?.toLowerCase() || "";
+        const market2Name = pair.market_2?.name?.toLowerCase() || "";
+        if (!market1Name.includes(query) && !market2Name.includes(query)) {
+          return false;
+        }
+      }
 
       // Filter by favorites
       if (filters.showFavoritesOnly && !favorites.has(pair.pair_id)) {
@@ -122,7 +133,7 @@ export function MarketPairCards({ pairs, budget }: MarketPairCardsProps) {
     });
 
     return filtered;
-  }, [pairs, sortConfig, filters, budget, favorites]);
+  }, [pairs, sortConfig, filters, budget, favorites, searchQuery]);
 
   return (
     <>

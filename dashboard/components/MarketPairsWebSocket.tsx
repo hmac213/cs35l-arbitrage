@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Search } from "lucide-react";
 import { MarketPair } from "@/types/api";
 import { MarketPairCards } from "./MarketPairCards";
 import { cn } from "@/lib/utils";
@@ -16,6 +17,7 @@ export function MarketPairsWebSocket({ budget }: MarketPairsWebSocketProps) {
   const [pairs, setPairs] = useState<MarketPair[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Fetch initial data via REST API
   useEffect(() => {
@@ -222,13 +224,25 @@ export function MarketPairsWebSocket({ budget }: MarketPairsWebSocketProps) {
 
   return (
     <div className="flex w-full flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-50">
-          Market Pairs
-        </h1>
-        <p className="mt-1 text-sm text-zinc-400">
-          Find arbitrage opportunities across prediction markets
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-50">
+            Market Pairs
+          </h1>
+          <p className="mt-1 text-sm text-zinc-400">
+            Find arbitrage opportunities across prediction markets
+          </p>
+        </div>
+        <div className="relative w-full sm:w-72">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Search markets..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 py-2 pl-10 pr-4 text-sm text-zinc-50 placeholder:text-zinc-500 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+          />
+        </div>
       </div>
 
       {error && (
@@ -246,7 +260,7 @@ export function MarketPairsWebSocket({ budget }: MarketPairsWebSocketProps) {
       )}
 
       {!error && pairs.length > 0 && (
-        <MarketPairCards pairs={pairs} budget={budget ?? null} />
+        <MarketPairCards pairs={pairs} budget={budget ?? null} searchQuery={searchQuery} />
       )}
 
       {/* WebSocket Status Indicator */}
