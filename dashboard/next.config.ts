@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
     // Map to NEXT_PUBLIC_ for browser access (using anon key, not secret)
     NEXT_PUBLIC_SUPABASE_URL: process.env.SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
+    NEXT_PUBLIC_NEWS_API_KEY: process.env.NEWS_API_KEY,
   },
 };
 

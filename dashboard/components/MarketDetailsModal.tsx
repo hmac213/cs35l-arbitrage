@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { MarketPair } from "@/types/api";
 import { OrderbookView } from "./OrderbookView";
+import { RelatedNews } from "./RelatedNews";
 import { formatDateTime } from "@/lib/utils";
 import { X } from "lucide-react";
 
@@ -161,6 +162,9 @@ export function MarketDetailsModal({ pair, isOpen, onClose }: MarketDetailsModal
               </div>
             </div>
           )}
+
+          {/* Related News Section */}
+          <RelatedNews marketName={cleanMarketName(market_1.name)} />
         </div>
       </div>
     </div>
