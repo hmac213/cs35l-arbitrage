@@ -41,20 +41,8 @@ export function RelatedNews({ marketName }: RelatedNewsProps) {
           return;
         }
 
-        const apiKey = process.env.NEXT_PUBLIC_NEWS_API_KEY;
-        if (!apiKey) {
-          setError("News API key not configured");
-          setLoading(false);
-          return;
-        }
-
         const response = await fetch(
-          `https://newsapi.org/v2/everything?q=${encodeURIComponent(searchQuery)}&sortBy=publishedAt&pageSize=6&language=en`,
-          {
-            headers: {
-              "X-Api-Key": apiKey,
-            },
-          }
+          `/api/news?q=${encodeURIComponent(searchQuery)}`
         );
 
         if (!response.ok) {
