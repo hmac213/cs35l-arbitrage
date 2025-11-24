@@ -32,17 +32,15 @@ export function RelatedNews({ marketName }: RelatedNewsProps) {
       setError(null);
 
       try {
-        // Extract key terms from market name for search query
-        const searchQuery = extractSearchTerms(marketName);
-
-        if (!searchQuery) {
+        if (!marketName.trim()) {
           setArticles([]);
           setLoading(false);
           return;
         }
 
+        // Pass raw market name - server uses OpenAI to extract search terms
         const response = await fetch(
-          `/api/news?q=${encodeURIComponent(searchQuery)}`
+          `/api/news?market=${encodeURIComponent(marketName)}`
         );
 
         if (!response.ok) {
@@ -69,37 +67,6 @@ export function RelatedNews({ marketName }: RelatedNewsProps) {
 
     fetchNews();
   }, [marketName]);
-
-  // Extract meaningful search terms from market name
-  const extractSearchTerms = (name: string): string => {
-    // List of stop words to remove (using word boundaries)
-    const stopWords = [
-      "will", "be", "the", "a", "an", "in", "on", "at", "to", "for", "of", "by",
-      "with", "from", "this", "that", "these", "those", "is", "are", "was", "were",
-      "has", "have", "had", "do", "does", "did", "can", "could", "may", "might",
-      "must", "shall", "should", "would", "yes", "no", "there", "their", "they",
-      "and", "or", "but", "if", "then", "than", "so", "as", "it", "its",
-      "hide", "new", "above", "below", "before", "after", "during", "end", "reach"
-    ];
-
-    // Remove punctuation and special characters first
-    let cleanedName = name.replace(/[?!.,;:'"$%()]/g, " ");
-
-    // Remove stop words using word boundaries
-    stopWords.forEach((word) => {
-      const regex = new RegExp(`\\b${word}\\b`, "gi");
-      cleanedName = cleanedName.replace(regex, " ");
-    });
-
-    // Clean up whitespace
-    cleanedName = cleanedName.replace(/\s+/g, " ").trim();
-
-    // Get meaningful words (at least 3 chars)
-    const words = cleanedName.split(" ").filter((word) => word.length >= 3);
-
-    // Return up to 3 key terms for better search results
-    return words.slice(0, 3).join(" ");
-  };
 
   const formatDate = (dateString: string): string => {
     const date = new Date(dateString);
