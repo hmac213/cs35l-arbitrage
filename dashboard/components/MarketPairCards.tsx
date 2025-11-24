@@ -236,6 +236,23 @@ function compareBySortOption(
       return new Date(bTime).getTime() - new Date(aTime).getTime();
     }
 
+    case "cashout_date": {
+      // Get resolve_date from market_1, fallback to market_2 if null
+      const aDate = a.market_1.resolve_date || a.market_2.resolve_date;
+      const bDate = b.market_1.resolve_date || b.market_2.resolve_date;
+      
+      // If both are null, they're equal
+      if (!aDate && !bDate) return 0;
+      // If a has no date, push it to bottom
+      if (!aDate) return 1;
+      // If b has no date, push it to bottom
+      if (!bDate) return -1;
+      
+      // Compare dates (earlier dates first - ascending order)
+      // This means markets that cash out sooner appear first
+      return new Date(aDate).getTime() - new Date(bDate).getTime();
+    }
+
     case "none":
     default:
       return 0;
