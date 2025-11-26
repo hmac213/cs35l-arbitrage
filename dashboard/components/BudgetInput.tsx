@@ -63,7 +63,7 @@ export function BudgetInput({ budget, onBudgetChange }: BudgetInputProps) {
               onChange={handleInputChange}
               placeholder="Enter your budget"
               className={cn(
-                "w-full rounded-md border bg-zinc-900 px-3 py-2 pl-7 text-sm text-zinc-50 placeholder:text-zinc-600",
+                "w-full rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 pl-7 text-sm text-zinc-50 placeholder:text-zinc-600",
                 "focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600",
                 budget !== null && "border-emerald-500/40 ring-1 ring-emerald-500/20"
               )}
