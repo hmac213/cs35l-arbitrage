@@ -10,16 +10,18 @@ import {
   SortConfig,
   FilterOptions,
 } from "./FilterAndSortControls";
+import { BudgetInput } from "./BudgetInput";
 import { calculateProfitWithBudget } from "@/lib/utils";
 import { useFavorites } from "@/hooks/useFavorites";
 
 interface MarketPairCardsProps {
   pairs: MarketPair[];
   budget: number | null;
+  onBudgetChange?: (budget: number | null) => void;
   searchQuery?: string;
 }
 
-export function MarketPairCards({ pairs, budget, searchQuery = "" }: MarketPairCardsProps) {
+export function MarketPairCards({ pairs, budget, onBudgetChange, searchQuery = "" }: MarketPairCardsProps) {
   const [selectedPair, setSelectedPair] = useState<MarketPair | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [sortConfig, setSortConfig] = useState<SortConfig>({
@@ -147,6 +149,9 @@ export function MarketPairCards({ pairs, budget, searchQuery = "" }: MarketPairC
         budget={budget}
         favoritesCount={favorites.size}
       />
+      {onBudgetChange && (
+        <BudgetInput budget={budget} onBudgetChange={onBudgetChange} />
+      )}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {filteredAndSortedPairs.length === 0 ? (
           <div className="col-span-2 rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-center text-sm text-zinc-400">

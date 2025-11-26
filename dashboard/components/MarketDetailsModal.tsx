@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { MarketPair } from "@/types/api";
 import { OrderbookView } from "./OrderbookView";
+import { RelatedNews } from "./RelatedNews";
 import { formatDateTime } from "@/lib/utils";
 import { X } from "lucide-react";
 
@@ -61,7 +62,7 @@ export function MarketDetailsModal({ pair, isOpen, onClose }: MarketDetailsModal
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm px-6 py-4">
+        <div className="sticky top-0 z-20 flex items-center justify-between border-b border-zinc-800 bg-zinc-950 px-6 py-4">
           <div>
             <h2 className="text-lg font-semibold text-zinc-50">Market Details</h2>
             <p className="text-xs text-zinc-400">
@@ -79,10 +80,10 @@ export function MarketDetailsModal({ pair, isOpen, onClose }: MarketDetailsModal
         </div>
 
         {/* Content */}
-        <div className="p-6">
+        <div className="relative z-0 p-6">
           <div className="grid gap-6 lg:grid-cols-2">
             {/* Market 1 */}
-            <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+            <div className="space-y-4 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-zinc-50">
@@ -105,7 +106,7 @@ export function MarketDetailsModal({ pair, isOpen, onClose }: MarketDetailsModal
             </div>
 
             {/* Market 2 */}
-            <div className="space-y-4 rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+            <div className="space-y-4 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-zinc-50">
@@ -161,6 +162,9 @@ export function MarketDetailsModal({ pair, isOpen, onClose }: MarketDetailsModal
               </div>
             </div>
           )}
+
+          {/* Related News Section */}
+          <RelatedNews marketName={cleanMarketName(market_1.name)} />
         </div>
       </div>
     </div>

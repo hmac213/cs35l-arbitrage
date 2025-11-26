@@ -11,9 +11,10 @@ const WS_URL = API_URL.replace(/^http/, "ws").replace(/^https/, "wss");
 
 interface MarketPairsWebSocketProps {
   budget?: number | null;
+  onBudgetChange?: (budget: number | null) => void;
 }
 
-export function MarketPairsWebSocket({ budget }: MarketPairsWebSocketProps) {
+export function MarketPairsWebSocket({ budget, onBudgetChange }: MarketPairsWebSocketProps) {
   const [pairs, setPairs] = useState<MarketPair[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -260,7 +261,7 @@ export function MarketPairsWebSocket({ budget }: MarketPairsWebSocketProps) {
       )}
 
       {!error && pairs.length > 0 && (
-        <MarketPairCards pairs={pairs} budget={budget ?? null} searchQuery={searchQuery} />
+        <MarketPairCards pairs={pairs} budget={budget ?? null} onBudgetChange={onBudgetChange} searchQuery={searchQuery} />
       )}
 
       {/* WebSocket Status Indicator */}
