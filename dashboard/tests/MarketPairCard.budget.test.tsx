@@ -71,6 +71,8 @@ describe("MarketPairCard Budget Display", () => {
         pair={mockMarketPair}
         onClick={() => {}}
         budget={null}
+        isFavorite={false}
+        onToggleFavorite={() => {}}
       />
     );
 
@@ -83,6 +85,8 @@ describe("MarketPairCard Budget Display", () => {
         pair={mockMarketPair}
         onClick={() => {}}
         budget={100}
+        isFavorite={false}
+        onToggleFavorite={() => {}}
       />
     );
 
@@ -95,6 +99,8 @@ describe("MarketPairCard Budget Display", () => {
         pair={mockMarketPair}
         onClick={() => {}}
         budget={100}
+        isFavorite={false}
+        onToggleFavorite={() => {}}
       />
     );
 
@@ -110,6 +116,8 @@ describe("MarketPairCard Budget Display", () => {
         pair={mockMarketPair}
         onClick={() => {}}
         budget={100}
+        isFavorite={false}
+        onToggleFavorite={() => {}}
       />
     );
 
@@ -125,6 +133,8 @@ describe("MarketPairCard Budget Display", () => {
         pair={mockMarketPair}
         onClick={() => {}}
         budget={100}
+        isFavorite={false}
+        onToggleFavorite={() => {}}
       />
     );
 
@@ -140,6 +150,8 @@ describe("MarketPairCard Budget Display", () => {
         pair={mockMarketPair}
         onClick={() => {}}
         budget={100}
+        isFavorite={false}
+        onToggleFavorite={() => {}}
       />
     );
 
@@ -155,6 +167,8 @@ describe("MarketPairCard Budget Display", () => {
         pair={mockMarketPair}
         onClick={() => {}}
         budget={100}
+        isFavorite={false}
+        onToggleFavorite={() => {}}
       />
     );
 
@@ -171,6 +185,8 @@ describe("MarketPairCard Budget Display", () => {
         pair={mockMarketPair}
         onClick={() => {}}
         budget={largeBudget}
+        isFavorite={false}
+        onToggleFavorite={() => {}}
       />
     );
 
@@ -183,6 +199,8 @@ describe("MarketPairCard Budget Display", () => {
         pair={mockMarketPair}
         onClick={() => {}}
         budget={100}
+        isFavorite={false}
+        onToggleFavorite={() => {}}
       />
     );
 
@@ -200,6 +218,8 @@ describe("MarketPairCard Budget Display", () => {
         pair={pairWithoutOpportunity}
         onClick={() => {}}
         budget={100}
+        isFavorite={false}
+        onToggleFavorite={() => {}}
       />
     );
 

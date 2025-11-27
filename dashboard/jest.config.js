@@ -12,7 +12,13 @@ const customJestConfig = {
   moduleNameMapper: {
     "^@/(.*)$": "<rootDir>/$1",
   },
-  testPathIgnorePatterns: ["<rootDir>/node_modules/", "<rootDir>/.next/"],
+  testPathIgnorePatterns: [
+    "<rootDir>/node_modules/",
+    "<rootDir>/.next/",
+    // Ignore Playwright end-to-end specs; they are run with the Playwright test runner, not Jest.
+    "<rootDir>/tests/e2e/",
+    "<rootDir>/e2e/",
+  ],
   testMatch: ["**/tests/**/*.test.[jt]s?(x)", "**/?(*.)+(spec|test).[jt]s?(x)"],
   collectCoverageFrom: [
     "components/**/*.{js,jsx,ts,tsx}",
