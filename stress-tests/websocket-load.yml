@@ -1,0 +1,96 @@
+# Artillery WebSocket Load Test for Arbitrage Dashboard
+# Tests the /ws/market_pairs endpoint under various load conditions
+#
+# Run with: npx artillery run stress-tests/websocket-load.yml
+# Run with report: npx artillery run --output stress-tests/reports/ws-report.json stress-tests/websocket-load.yml
+# Generate HTML report: npx artillery report stress-tests/reports/ws-report.json
+
+config:
+  target: "ws://localhost:8000"
+  phases:
+    # Phase 1: Warm-up - gradually ramp up connections
+    - duration: 30
+      arrivalRate: 2
+      name: "Warm-up phase"
+
+    # Phase 2: Normal load - simulate typical usage
+    - duration: 60
+      arrivalRate: 5
+      name: "Normal load"
+
+    # Phase 3: Stress test - high connection rate
+    - duration: 30
+      arrivalRate: 15
+      name: "Stress test"
+
+    # Phase 4: Spike test - sudden burst of connections
+    - duration: 10
+      arrivalRate: 30
+      name: "Spike test"
+
+    # Phase 5: Cool-down
+    - duration: 20
+      arrivalRate: 2
+      name: "Cool-down"
+
+  # WebSocket-specific settings
+  ws:
+    # Subprotocols if needed
+    # subprotocols: []
+    # Headers for authentication (if needed)
+    # headers:
+    #   Authorization: "Bearer {{ $env.AUTH_TOKEN }}"
+
+  # Variables for test scenarios
+  variables:
+    pingInterval: 10
+
+  # Plugins for enhanced metrics
+  plugins:
+    expect: {}
+
+scenarios:
+  # Scenario 1: Basic connection and receive updates
+  - name: "Basic WebSocket Connection"
+    weight: 60  # 60% of virtual users will run this scenario
+    engine: ws
+    flow:
+      # Connect to WebSocket endpoint
+      - connect: "/ws/market_pairs"
+
+      # Wait for initial data (should arrive within 2 seconds)
+      - think: 2
+
+      # Hold connection and receive broadcasts (60 seconds)
+      # The server broadcasts every 5 seconds
+      - think: 60
+
+      # Graceful disconnect
+
+  # Scenario 2: Active client with ping/pong
+  - name: "Active Client with Ping"
+    weight: 30  # 30% of virtual users
+    engine: ws
+    flow:
+      - connect: "/ws/market_pairs"
+
+      # Wait for initial data
+      - think: 2
+
+      # Send ping every 10 seconds for 60 seconds (6 pings)
+      - loop:
+        - send: "ping"
+        - think: 10
+        count: 6
+
+  # Scenario 3: Quick connect/disconnect (simulates mobile users)
+  - name: "Short-lived Connection"
+    weight: 10  # 10% of virtual users
+    engine: ws
+    flow:
+      - connect: "/ws/market_pairs"
+
+      # Receive initial data only
+      - think: 3
+
+      # Disconnect quickly (simulates mobile users switching apps)

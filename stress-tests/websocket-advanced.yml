@@ -1,0 +1,52 @@
+# Advanced WebSocket Load Test with Custom Metrics
+# Uses processor.js for detailed latency and validation metrics
+#
+# Run with: npx artillery run stress-tests/websocket-advanced.yml
+
+config:
+  target: "ws://localhost:8000"
+  processor: "./processor.js"
+
+  phases:
+    # Sustained load test - focuses on long-lived connections
+    - duration: 120
+      arrivalRate: 3
+      name: "Sustained connections"
+
+  ws:
+    # Timeout settings
+    connectTimeout: 5000
+    messageTimeout: 10000
+
+  # Custom ensure thresholds
+  ensure:
+    maxErrorRate: 5  # Max 5% error rate for WebSocket tests
+
+scenarios:
+  # Long-lived connection that tracks all messages
+  - name: "Monitored WebSocket Session"
+    engine: ws
+    beforeScenario: "setupConnection"
+    afterScenario: "logSummary"
+    flow:
+      - connect:
+          target: "/ws/market_pairs"
+          # After connect, process will be called
+          capture:
+            - json: "$"
+              as: "wsResponse"
+
+      - function: "onConnectionOpen"
+
+      # Receive initial data
+      - think: 2
+
+      # Listen for broadcasts for 2 minutes
+      # Server broadcasts every 5 seconds, so we should receive ~24 messages
+      - loop:
+        - think: 5
+        - send: "ping"
+        - think: 1
+        count: 20
+
+      - function: "logSummary"

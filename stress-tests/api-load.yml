@@ -1,0 +1,83 @@
+# Artillery REST API Load Test for Arbitrage Dashboard
+# Tests the /api/get_paired_markets endpoint under load
+#
+# Run with: npx artillery run stress-tests/api-load.yml
+# Quick test: npx artillery run --count 10 -n 5 stress-tests/api-load.yml
+
+config:
+  target: "http://localhost:8000"
+  phases:
+    # Phase 1: Warm-up
+    - duration: 20
+      arrivalRate: 5
+      name: "Warm-up"
+
+    # Phase 2: Ramp-up to normal load
+    - duration: 30
+      arrivalRate: 10
+      rampTo: 30
+      name: "Ramp-up"
+
+    # Phase 3: Sustained high load
+    - duration: 60
+      arrivalRate: 30
+      name: "Sustained load"
+
+    # Phase 4: Stress test - push limits
+    - duration: 30
+      arrivalRate: 50
+      name: "Stress test"
+
+    # Phase 5: Spike test
+    - duration: 10
+      arrivalRate: 100
+      name: "Spike"
+
+    # Phase 6: Cool-down
+    - duration: 20
+      arrivalRate: 5
+      name: "Cool-down"
+
+  # HTTP-specific settings
+  defaults:
+    headers:
+      Content-Type: "application/json"
+      Accept: "application/json"
+
+  # Enable plugins
+  plugins:
+    expect: {}
+
+  # Ensure we capture detailed metrics
+  ensure:
+    p99: 500  # 99th percentile should be under 500ms
+    maxErrorRate: 1  # Max 1% error rate
+
+scenarios:
+  # Scenario 1: Fetch market pairs (main use case)
+  - name: "Get Market Pairs"
+    weight: 70
+    flow:
+      - get:
+          url: "/api/get_paired_markets"
+          expect:
+            - statusCode: 200
+            - contentType: "application/json"
+
+  # Scenario 2: Health check (used by monitoring systems)
+  - name: "Health Check"
+    weight: 20
+    flow:
+      - get:
+          url: "/health"
+          expect:
+            - statusCode: 200
+
+  # Scenario 3: Root endpoint
+  - name: "API Info"
+    weight: 10
+    flow:
+      - get:
+          url: "/"
+          expect:
+            - statusCode: 200
