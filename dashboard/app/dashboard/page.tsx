@@ -7,8 +7,6 @@ export default function DashboardPage() {
   const [budget, setBudget] = useState<number | null>(null);
 
   return (
-    <div className="flex w-full flex-col gap-4">
-      <MarketPairsWebSocket budget={budget} onBudgetChange={setBudget} />
-    </div>
+    <MarketPairsWebSocket budget={budget} onBudgetChange={setBudget} />
   );
 }

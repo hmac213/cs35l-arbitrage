@@ -10,7 +10,6 @@ import {
   SortConfig,
   FilterOptions,
 } from "./FilterAndSortControls";
-import { BudgetInput } from "./BudgetInput";
 import { calculateProfitWithBudget } from "@/lib/utils";
 import { useFavorites } from "@/hooks/useFavorites";
 
@@ -147,11 +146,9 @@ export function MarketPairCards({ pairs, budget, onBudgetChange, searchQuery = "
         resultCount={filteredAndSortedPairs.length}
         totalCount={pairs.length}
         budget={budget}
+        onBudgetChange={onBudgetChange}
         favoritesCount={favorites.size}
       />
-      {onBudgetChange && (
-        <BudgetInput budget={budget} onBudgetChange={onBudgetChange} />
-      )}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {filteredAndSortedPairs.length === 0 ? (
           <div className="col-span-2 rounded-lg border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-center text-sm text-zinc-400">
