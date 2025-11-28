@@ -1,0 +1,9 @@
+# Artillery reports (generated)
+reports/*.json
+reports/*.html
+
+# Node modules
+node_modules/
+
+# OS files
+.DS_Store

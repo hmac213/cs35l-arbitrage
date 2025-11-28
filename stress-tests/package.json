@@ -1,0 +1,28 @@
+{
+  "name": "arbitrage-stress-tests",
+  "version": "1.0.0",
+  "description": "Artillery stress tests for Arbitrage Dashboard API and WebSocket endpoints",
+  "scripts": {
+    "test:ws": "artillery run websocket-load.yml",
+    "test:ws:quick": "artillery run --count 5 -n 3 websocket-load.yml",
+    "test:ws:advanced": "artillery run websocket-advanced.yml",
+    "test:api": "artillery run api-load.yml",
+    "test:api:quick": "artillery run --count 20 -n 5 api-load.yml",
+    "test:all": "npm run test:api && npm run test:ws",
+    "test:ws:report": "artillery run --output reports/ws-report.json websocket-load.yml && artillery report reports/ws-report.json --output reports/ws-report.html",
+    "test:api:report": "artillery run --output reports/api-report.json api-load.yml && artillery report reports/api-report.json --output reports/api-report.html",
+    "report:generate": "artillery report reports/ws-report.json --output reports/ws-report.html",
+    "clean": "rm -rf reports/*.json reports/*.html"
+  },
+  "devDependencies": {
+    "artillery": "^2.0.0",
+    "artillery-plugin-expect": "^2.0.0"
+  },
+  "keywords": [
+    "stress-testing",
+    "load-testing",
+    "artillery",
+    "websocket",
+    "api-testing"
+  ]
+}
