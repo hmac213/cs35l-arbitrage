@@ -29,12 +29,7 @@ scenarios:
     beforeScenario: "setupConnection"
     afterScenario: "logSummary"
     flow:
-      - connect:
-          target: "/ws/market_pairs"
-          # After connect, process will be called
-          capture:
-            - json: "$"
-              as: "wsResponse"
+      - connect: "ws://localhost:8000/ws/market_pairs"
 
       - function: "onConnectionOpen"
 

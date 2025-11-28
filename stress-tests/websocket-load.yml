@@ -56,7 +56,7 @@ scenarios:
     engine: ws
     flow:
       # Connect to WebSocket endpoint
-      - connect: "/ws/market_pairs"
+      - connect: "ws://localhost:8000/ws/market_pairs"
 
       # Wait for initial data (should arrive within 2 seconds)
       - think: 2
@@ -72,7 +72,7 @@ scenarios:
     weight: 30  # 30% of virtual users
     engine: ws
     flow:
-      - connect: "/ws/market_pairs"
+      - connect: "ws://localhost:8000/ws/market_pairs"
 
       # Wait for initial data
       - think: 2
@@ -88,7 +88,7 @@ scenarios:
     weight: 10  # 10% of virtual users
     engine: ws
     flow:
-      - connect: "/ws/market_pairs"
+      - connect: "ws://localhost:8000/ws/market_pairs"
 
       # Receive initial data only
       - think: 3

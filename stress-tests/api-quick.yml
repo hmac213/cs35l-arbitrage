@@ -1,0 +1,20 @@
+# Quick API test - runs in ~15 seconds
+# Good for smoke testing during development
+
+config:
+  target: "http://localhost:8000"
+  phases:
+    - duration: 10
+      arrivalRate: 5
+      name: "Quick test"
+
+scenarios:
+  - name: "Get Market Pairs"
+    flow:
+      - get:
+          url: "/api/get_paired_markets"
+
+  - name: "Health Check"
+    flow:
+      - get:
+          url: "/health"
