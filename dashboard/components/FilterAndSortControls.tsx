@@ -83,10 +83,6 @@ export function FilterAndSortControls({
     });
   };
 
-  const updateSort = (level: keyof SortConfig, value: SortOption) => {
-    onSortChange({ ...sortConfig, [level]: value });
-  };
-
   const handleBudgetChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setBudgetInput(value);
@@ -101,22 +97,6 @@ export function FilterAndSortControls({
   const clearBudget = () => {
     setBudgetInput("");
     onBudgetChange?.(null);
-  };
-
-  const getAvailableOptions = (currentLevel: keyof SortConfig) => {
-    const used = [
-      sortConfig.primary,
-      sortConfig.secondary,
-      sortConfig.tertiary,
-    ].filter((s) => s !== "none");
-    const current = sortConfig[currentLevel];
-
-    return SORT_OPTIONS.filter((opt) => {
-      if (opt.value === "profit_with_budget" && budget === null) {
-        return false;
-      }
-      return opt.value === "none" || !used.includes(opt.value) || opt.value === current;
-    });
   };
 
   const hasActiveFilters =
@@ -134,37 +114,23 @@ export function FilterAndSortControls({
       <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
         {/* Left: Sort and Budget */}
         <div className="flex flex-wrap items-center gap-3">
-          {/* Sort Selects */}
+          {/* Sort Select */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-zinc-500">Sort</span>
+            <span className="text-xs font-medium text-zinc-500">Sort by</span>
             <select
               value={sortConfig.primary}
-              onChange={(e) => updateSort("primary", e.target.value as SortOption)}
-              className="rounded-md border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
+              onChange={(e) => {
+                const value = e.target.value as SortOption;
+                onSortChange({ primary: value, secondary: "none", tertiary: "none" });
+              }}
+              className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
             >
-              {getAvailableOptions("primary").map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={sortConfig.secondary}
-              onChange={(e) => updateSort("secondary", e.target.value as SortOption)}
-              className="rounded-md border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
-            >
-              {getAvailableOptions("secondary").map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={sortConfig.tertiary}
-              onChange={(e) => updateSort("tertiary", e.target.value as SortOption)}
-              className="rounded-md border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-200 focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-600"
-            >
-              {getAvailableOptions("tertiary").map((opt) => (
+              {SORT_OPTIONS.filter(opt => {
+                if (opt.value === "profit_with_budget" && budget === null) {
+                  return false;
+                }
+                return true;
+              }).map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>
@@ -187,7 +153,7 @@ export function FilterAndSortControls({
                   onChange={handleBudgetChange}
                   placeholder="Enter amount"
                   className={cn(
-                    "w-32 rounded-md border bg-zinc-800 py-1.5 pl-7 pr-7 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1",
+                    "w-36 rounded-md border bg-zinc-800 py-1.5 pl-7 pr-7 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:ring-1",
                     budget !== null
                       ? "border-emerald-500/40 focus:border-emerald-500/50 focus:ring-emerald-500/30"
                       : "border-zinc-700 focus:border-zinc-600 focus:ring-zinc-600"

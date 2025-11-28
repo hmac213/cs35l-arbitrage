@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Search, TrendingUp } from "lucide-react";
+import { Search } from "lucide-react";
 import { MarketPair } from "@/types/api";
 import { MarketPairCards } from "./MarketPairCards";
 import { cn } from "@/lib/utils";
@@ -207,55 +207,39 @@ export function MarketPairsWebSocket({ budget, onBudgetChange }: MarketPairsWebS
   }, []);
 
   return (
-    <div className="flex w-full flex-col">
-      {/* Header */}
-      <div className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur-sm">
-        <div className="flex flex-col gap-4 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-          {/* Left: Title and status */}
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
-              <TrendingUp className="h-5 w-5 text-emerald-400" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold tracking-tight text-zinc-50">
-                Arbitrage Dashboard
-              </h1>
-              <div className="flex items-center gap-2 text-xs text-zinc-500">
-                <span
-                  className={cn(
-                    "h-1.5 w-1.5 rounded-full",
-                    isConnected ? "bg-emerald-500" : "bg-zinc-600"
-                  )}
-                />
-                <span>
-                  {isConnected ? "Live" : "Offline"}
-                </span>
-                {pairs.length > 0 && (
-                  <>
-                    <span className="text-zinc-700">·</span>
-                    <span>{pairs.length} pairs</span>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
+    <div className="flex w-full flex-col gap-4">
+      {/* Status and Search Row */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-2 text-xs text-zinc-500">
+          <span
+            className={cn(
+              "h-2 w-2 rounded-full",
+              isConnected ? "bg-emerald-500" : "bg-zinc-600"
+            )}
+          />
+          <span>{isConnected ? "Live" : "Offline"}</span>
+          {pairs.length > 0 && (
+            <>
+              <span className="text-zinc-700">·</span>
+              <span>{pairs.length} pairs</span>
+            </>
+          )}
+        </div>
 
-          {/* Right: Search */}
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
-            <input
-              type="text"
-              placeholder="Search markets..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 py-2.5 pl-10 pr-4 text-sm text-zinc-50 placeholder:text-zinc-500 transition focus:border-zinc-700 focus:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-700"
-            />
-          </div>
+        <div className="relative w-72">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+          <input
+            type="text"
+            placeholder="Search markets..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 py-2 pl-10 pr-4 text-sm text-zinc-50 placeholder:text-zinc-500 transition focus:border-zinc-700 focus:bg-zinc-900 focus:outline-none focus:ring-1 focus:ring-zinc-700"
+          />
         </div>
       </div>
 
       {/* Content */}
-      <div className="flex flex-col gap-4 p-6">
+      <div className="flex flex-col gap-4">
         {error && (
           <div className="rounded-lg border border-red-500/30 bg-red-950/30 px-4 py-3 text-sm text-red-200">
             {error}
@@ -264,9 +248,6 @@ export function MarketPairsWebSocket({ budget, onBudgetChange }: MarketPairsWebS
 
         {!error && pairs.length === 0 && (
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/30 px-4 py-12 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-800">
-              <TrendingUp className="h-6 w-6 text-zinc-500" />
-            </div>
             <p className="text-sm text-zinc-400">
               {isConnected
                 ? "Waiting for market pairs data..."

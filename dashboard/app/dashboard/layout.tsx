@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
+import { Search, TrendingUp } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export default function DashboardLayout({
   children,
@@ -65,18 +67,21 @@ export default function DashboardLayout({
 
   return (
     <div className="min-h-screen flex flex-col">
-      <header className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
-          <div className="space-y-1">
+      <header className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sticky top-0 z-20">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+          {/* Left: Logo and Title */}
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10">
+              <TrendingUp className="h-5 w-5 text-emerald-400" />
+            </div>
             <h1 className="text-lg font-semibold tracking-tight">
               Arbitrage Dashboard
             </h1>
-            <p className="text-xs text-zinc-400">
-              Visualize current and historical opportunities across exchanges.
-            </p>
           </div>
+
+          {/* Right: User info */}
           <div className="flex items-center gap-4">
-            <span className="text-sm text-zinc-300">{getUserDisplayName()}</span>
+            <span className="text-sm text-zinc-400">{getUserDisplayName()}</span>
             <button
               onClick={handleLogout}
               className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white"
@@ -86,7 +91,7 @@ export default function DashboardLayout({
           </div>
         </div>
       </header>
-      <main className="mx-auto flex w-full max-w-6xl flex-1 px-4 py-6">
+      <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col px-6 py-6">
         {children}
       </main>
     </div>
