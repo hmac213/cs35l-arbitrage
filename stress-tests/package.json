@@ -9,14 +9,16 @@
     "test:api": "artillery run api-load.yml",
     "test:api:quick": "artillery run api-quick.yml",
     "test:all": "npm run test:api && npm run test:ws",
-    "test:ws:report": "artillery run --output reports/ws-report.json websocket-load.yml && artillery report reports/ws-report.json --output reports/ws-report.html",
-    "test:api:report": "artillery run --output reports/api-report.json api-load.yml && artillery report reports/api-report.json --output reports/api-report.html",
-    "report:generate": "artillery report reports/ws-report.json --output reports/ws-report.html",
+    "test:ws:cloud": "artillery run --dotenv ../.env --record websocket-load.yml",
+    "test:api:cloud": "artillery run --dotenv ../.env --record api-load.yml",
+    "test:ws:report": "artillery run --output reports/ws-report.json websocket-load.yml",
+    "test:api:report": "artillery run --output reports/api-report.json api-load.yml",
     "clean": "rm -rf reports/*.json reports/*.html"
   },
   "devDependencies": {
     "artillery": "^2.0.0",
-    "artillery-plugin-expect": "^2.0.0"
+    "artillery-plugin-expect": "^2.0.0",
+    "dotenv-cli": "^7.4.0"
   },
   "keywords": [
     "stress-testing",
