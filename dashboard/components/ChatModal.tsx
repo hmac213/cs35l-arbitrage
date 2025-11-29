@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { X, Send, MessageCircle, Bot, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MarketPair } from "@/types/api";
 
 export interface Message {
   id: string;
@@ -14,9 +15,55 @@ export interface Message {
 interface ChatModalProps {
   isOpen: boolean;
   onClose: () => void;
+  marketPairs?: MarketPair[];
 }
 
-export function ChatModal({ isOpen, onClose }: ChatModalProps) {
+function formatMarketContext(pairs: MarketPair[]): string {
+  if (!pairs || pairs.length === 0) return "";
+
+  const activeOpportunities = pairs.filter((p) => p.current_opportunity);
+  const summary = [];
+
+  summary.push(`Total market pairs tracked: ${pairs.length}`);
+  summary.push(`Active arbitrage opportunities: ${activeOpportunities.length}`);
+
+  if (activeOpportunities.length > 0) {
+    summary.push("\nTop arbitrage opportunities:");
+    // Sort by profit and take top 5
+    const topOpps = [...activeOpportunities]
+      .sort(
+        (a, b) =>
+          (b.current_opportunity?.profit_per_share || 0) -
+          (a.current_opportunity?.profit_per_share || 0)
+      )
+      .slice(0, 5);
+
+    topOpps.forEach((pair, i) => {
+      const opp = pair.current_opportunity!;
+      const marketName =
+        pair.market_1.exchange === "polymarket"
+          ? pair.market_1.name
+          : pair.market_2.name;
+      summary.push(
+        `${i + 1}. "${marketName.substring(0, 50)}${marketName.length > 50 ? "..." : ""}"`
+      );
+      summary.push(
+        `   - Profit: $${opp.profit_per_share.toFixed(4)}/share (${(opp.profit_per_share * 100).toFixed(2)}%)`
+      );
+      summary.push(`   - Max size: ${opp.max_size.toFixed(0)} shares`);
+      summary.push(
+        `   - Potential: $${(opp.profit_per_share * opp.max_size).toFixed(2)} total`
+      );
+      summary.push(
+        `   - Strategy: Buy YES on ${opp.yes_exchange} ($${opp.yes_price.toFixed(2)}), NO on ${opp.no_exchange} ($${opp.no_price.toFixed(2)})`
+      );
+    });
+  }
+
+  return summary.join("\n");
+}
+
+export function ChatModal({ isOpen, onClose, marketPairs = [] }: ChatModalProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
@@ -76,6 +123,9 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
           content: m.content,
         }));
 
+      // Format market context for AI
+      const marketContext = formatMarketContext(marketPairs);
+
       const response = await fetch("http://localhost:8000/api/chat", {
         method: "POST",
         headers: {
@@ -83,6 +133,7 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
         },
         body: JSON.stringify({
           messages: conversationMessages,
+          market_context: marketContext || null,
         }),
       });
 

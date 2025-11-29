@@ -1,11 +1,23 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { MessageCircle } from "lucide-react";
 import { ChatModal } from "./ChatModal";
+import { MarketPair } from "@/types/api";
 
 export function ChatButton() {
   const [isOpen, setIsOpen] = useState(false);
+  const [marketPairs, setMarketPairs] = useState<MarketPair[]>([]);
+
+  // Fetch market pairs when chat opens
+  useEffect(() => {
+    if (isOpen && marketPairs.length === 0) {
+      fetch("http://localhost:8000/api/get_paired_markets")
+        .then((res) => res.json())
+        .then((data) => setMarketPairs(data))
+        .catch((err) => console.error("Failed to fetch market pairs:", err));
+    }
+  }, [isOpen, marketPairs.length]);
 
   return (
     <>
@@ -16,7 +28,11 @@ export function ChatButton() {
         <MessageCircle className="h-5 w-5" />
         <span className="text-sm font-medium">Chat</span>
       </button>
-      <ChatModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
+      <ChatModal
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        marketPairs={marketPairs}
+      />
     </>
   );
 }
