@@ -67,18 +67,51 @@ export function ChatModal({ isOpen, onClose }: ChatModalProps) {
     setInput("");
     setIsLoading(true);
 
-    // Placeholder response - will be replaced with API call
-    setTimeout(() => {
+    try {
+      // Prepare messages for API (exclude welcome message, only include conversation)
+      const conversationMessages = [...messages, userMessage]
+        .filter((m) => m.id !== "welcome")
+        .map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+
+      const response = await fetch("http://localhost:8000/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messages: conversationMessages,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to get response");
+      }
+
+      const data = await response.json();
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content:
-          "Thanks for your message! This is a placeholder response. The AI backend will be connected soon.",
+        content: data.message,
         timestamp: new Date(),
       };
       setMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      console.error("Chat error:", error);
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: "assistant",
+        content:
+          "Sorry, I encountered an error. Please make sure the API server is running and try again.",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   const formatTime = (date: Date) => {
