@@ -5,7 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from api.endpoints import market_pairs, websocket
+from api.endpoints import market_pairs, websocket, chat
 
 # Load environment variables from .env file
 # Look for .env in the project root (parent of api/ directory)
@@ -31,6 +31,7 @@ app.add_middleware(
 # Include routers
 app.include_router(market_pairs.router, prefix="/api", tags=["market-pairs"])
 app.include_router(websocket.router, tags=["websocket"])
+app.include_router(chat.router, prefix="/api", tags=["chat"])
 
 
 @app.get("/")
