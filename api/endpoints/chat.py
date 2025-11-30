@@ -11,8 +11,22 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Lazy-load OpenAI client to ensure env vars are loaded first
+_client: Optional[OpenAI] = None
+
+
+def get_openai_client() -> OpenAI:
+    """Get or create the OpenAI client."""
+    global _client
+    if _client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise HTTPException(
+                status_code=500,
+                detail="OPENAI_API_KEY environment variable is not set"
+            )
+        _client = OpenAI(api_key=api_key)
+    return _client
 
 
 class ChatMessage(BaseModel):
@@ -83,6 +97,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
             })
 
         # Call OpenAI API
+        client = get_openai_client()
         response = client.chat.completions.create(
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
             messages=openai_messages,
