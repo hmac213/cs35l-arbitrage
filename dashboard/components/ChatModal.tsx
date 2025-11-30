@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
-import { X, Send, MessageCircle, Bot, User } from "lucide-react";
+import { X, Send, Bot, User, Sparkles, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarketPair } from "@/types/api";
 
@@ -70,16 +70,16 @@ function formatMarketContext(pairs: MarketPair[]): string {
   return summary.join("\n");
 }
 
+const WELCOME_MESSAGE: Message = {
+  id: "welcome",
+  role: "assistant",
+  content:
+    "Hi! I'm your arbitrage assistant powered by AI. I have access to all current market opportunities and can help you:\n\n• Find the best arbitrage opportunities\n• Calculate potential returns for your budget\n• Explain trading strategies\n• Answer questions about prediction markets\n\nHow can I help you today?",
+  timestamp: new Date(),
+};
+
 export function ChatModal({ isOpen, onClose, marketPairs = [] }: ChatModalProps) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      content:
-        "Hi! I'm your arbitrage assistant. I can help you analyze market opportunities and make informed decisions. How can I help you today?",
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -192,21 +192,36 @@ export function ChatModal({ isOpen, onClose, marketPairs = [] }: ChatModalProps)
         <div className="flex items-center justify-between border-b border-zinc-800 bg-gradient-to-r from-zinc-900 to-zinc-900/50 px-4 py-3">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/10">
-              <Bot className="h-5 w-5 text-emerald-400" />
+              <Sparkles className="h-5 w-5 text-emerald-400" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-zinc-50">
                 Arbitrage Assistant
               </h3>
-              <p className="text-xs text-zinc-400">Powered by AI</p>
+              <p className="text-xs text-zinc-400">
+                {marketPairs.length > 0
+                  ? `${marketPairs.length} markets loaded`
+                  : "Powered by AI"}
+              </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-50"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {messages.length > 1 && (
+              <button
+                onClick={() => setMessages([WELCOME_MESSAGE])}
+                className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-50"
+                title="Clear chat"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-50"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Messages */}
@@ -245,7 +260,7 @@ export function ChatModal({ isOpen, onClose, marketPairs = [] }: ChatModalProps)
                 >
                   <div
                     className={cn(
-                      "rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
+                      "rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap",
                       message.role === "user"
                         ? "rounded-br-md bg-emerald-600 text-white"
                         : "rounded-bl-md bg-zinc-800 text-zinc-100"
@@ -264,19 +279,25 @@ export function ChatModal({ isOpen, onClose, marketPairs = [] }: ChatModalProps)
             {isLoading && (
               <div className="flex gap-3">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-800">
-                  <Bot className="h-4 w-4 text-zinc-400" />
+                  <Bot className="h-4 w-4 animate-pulse text-emerald-400" />
                 </div>
                 <div className="rounded-2xl rounded-bl-md bg-zinc-800 px-4 py-3">
-                  <div className="flex gap-1">
-                    <span className="h-2 w-2 animate-bounce rounded-full bg-zinc-500" />
-                    <span
-                      className="h-2 w-2 animate-bounce rounded-full bg-zinc-500"
-                      style={{ animationDelay: "0.15s" }}
-                    />
-                    <span
-                      className="h-2 w-2 animate-bounce rounded-full bg-zinc-500"
-                      style={{ animationDelay: "0.3s" }}
-                    />
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1">
+                      <span
+                        className="h-2 w-2 animate-bounce rounded-full bg-emerald-500"
+                        style={{ animationDelay: "0ms" }}
+                      />
+                      <span
+                        className="h-2 w-2 animate-bounce rounded-full bg-emerald-500"
+                        style={{ animationDelay: "150ms" }}
+                      />
+                      <span
+                        className="h-2 w-2 animate-bounce rounded-full bg-emerald-500"
+                        style={{ animationDelay: "300ms" }}
+                      />
+                    </div>
+                    <span className="text-xs text-zinc-500">Analyzing markets...</span>
                   </div>
                 </div>
               </div>

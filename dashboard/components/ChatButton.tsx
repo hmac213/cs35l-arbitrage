@@ -1,21 +1,24 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, X, Sparkles } from "lucide-react";
 import { ChatModal } from "./ChatModal";
 import { MarketPair } from "@/types/api";
 
 export function ChatButton() {
   const [isOpen, setIsOpen] = useState(false);
   const [marketPairs, setMarketPairs] = useState<MarketPair[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Fetch market pairs when chat opens
   useEffect(() => {
     if (isOpen && marketPairs.length === 0) {
+      setIsLoading(true);
       fetch("http://localhost:8000/api/get_paired_markets")
         .then((res) => res.json())
         .then((data) => setMarketPairs(data))
-        .catch((err) => console.error("Failed to fetch market pairs:", err));
+        .catch((err) => console.error("Failed to fetch market pairs:", err))
+        .finally(() => setIsLoading(false));
     }
   }, [isOpen, marketPairs.length]);
 
@@ -23,10 +26,23 @@ export function ChatButton() {
     <>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-3 text-white shadow-lg transition hover:bg-emerald-500 hover:shadow-xl"
+        className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full px-4 py-3 text-white shadow-lg transition-all duration-300 ${
+          isOpen
+            ? "bg-zinc-700 hover:bg-zinc-600"
+            : "bg-emerald-600 hover:bg-emerald-500 hover:shadow-xl hover:scale-105"
+        }`}
       >
-        <MessageCircle className="h-5 w-5" />
-        <span className="text-sm font-medium">Chat</span>
+        {isOpen ? (
+          <>
+            <X className="h-5 w-5" />
+            <span className="text-sm font-medium">Close</span>
+          </>
+        ) : (
+          <>
+            <Sparkles className="h-5 w-5" />
+            <span className="text-sm font-medium">AI Assistant</span>
+          </>
+        )}
       </button>
       <ChatModal
         isOpen={isOpen}
