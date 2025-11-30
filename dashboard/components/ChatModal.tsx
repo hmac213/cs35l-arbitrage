@@ -18,6 +18,13 @@ interface ChatModalProps {
   marketPairs?: MarketPair[];
 }
 
+const SAMPLE_MESSAGES = [
+  "What's the best opportunity right now?",
+  "I have $500, what should I invest in?",
+  "Explain how arbitrage works",
+  "Which markets have the highest returns?",
+];
+
 function formatMarketContext(pairs: MarketPair[]): string {
   if (!pairs || pairs.length === 0) return "";
 
@@ -278,6 +285,24 @@ export function ChatModal({ isOpen, onClose, marketPairs = [] }: ChatModalProps)
             <div ref={messagesEndRef} />
           </div>
         </div>
+
+        {/* Sample Messages */}
+        {messages.length === 1 && (
+          <div className="border-t border-zinc-800 bg-zinc-900/30 px-4 py-3">
+            <p className="mb-2 text-xs text-zinc-500">Try asking:</p>
+            <div className="flex flex-wrap gap-2">
+              {SAMPLE_MESSAGES.map((sample, i) => (
+                <button
+                  key={i}
+                  onClick={() => setInput(sample)}
+                  className="rounded-full border border-zinc-700 bg-zinc-800/50 px-3 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-600 hover:bg-zinc-800"
+                >
+                  {sample}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Input */}
         <form
