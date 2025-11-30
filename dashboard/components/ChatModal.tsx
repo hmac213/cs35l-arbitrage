@@ -231,7 +231,7 @@ export function ChatModal({ isOpen, onClose, marketPairs = [] }: ChatModalProps)
               <div
                 key={message.id}
                 className={cn(
-                  "flex gap-3",
+                  "flex gap-3 transition-opacity duration-300",
                   message.role === "user" ? "flex-row-reverse" : "flex-row"
                 )}
               >
