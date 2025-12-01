@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useMemo } from "react";
-import { X, Send, Bot, User, Sparkles, RefreshCw } from "lucide-react";
+import { Send, Bot, User, Sparkles, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MarketPair } from "@/types/api";
 
