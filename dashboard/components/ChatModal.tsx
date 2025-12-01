@@ -187,7 +187,7 @@ export function ChatModal({ isOpen, onClose, marketPairs = [] }: ChatModalProps)
       />
 
       {/* Modal */}
-      <div className="fixed bottom-20 right-4 z-50 flex w-[420px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl">
+      <div className="fixed bottom-20 right-4 z-50 flex h-[min(600px,calc(100vh-6rem))] w-[420px] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-zinc-800 bg-gradient-to-r from-zinc-900 to-zinc-900/50 px-4 py-3">
           <div className="flex items-center gap-3">
@@ -225,7 +225,7 @@ export function ChatModal({ isOpen, onClose, marketPairs = [] }: ChatModalProps)
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4" style={{ height: "400px" }}>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-700 hover:scrollbar-thumb-zinc-600">
           <div className="flex flex-col gap-4">
             {messages.map((message) => (
               <div
