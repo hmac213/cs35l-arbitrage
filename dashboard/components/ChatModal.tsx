@@ -225,7 +225,7 @@ export function ChatModal({ isOpen, onClose, marketPairs = [] }: ChatModalProps)
         </div>
 
         {/* Messages */}
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-700 hover:scrollbar-thumb-zinc-600">
+        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-4">
           <div className="flex flex-col gap-4">
             {messages.map((message) => (
               <div
