@@ -205,23 +205,15 @@ export function ChatModal({ isOpen, onClose, marketPairs = [] }: ChatModalProps)
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            {messages.length > 1 && (
-              <button
-                onClick={() => setMessages([WELCOME_MESSAGE])}
-                className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-50"
-                title="Clear chat"
-              >
-                <RefreshCw className="h-4 w-4" />
-              </button>
-            )}
+          {messages.length > 1 && (
             <button
-              onClick={onClose}
+              onClick={() => setMessages([WELCOME_MESSAGE])}
               className="rounded-lg p-2 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-50"
+              title="Clear chat"
             >
-              <X className="h-4 w-4" />
+              <RefreshCw className="h-4 w-4" />
             </button>
-          </div>
+          )}
         </div>
 
         {/* Messages */}
