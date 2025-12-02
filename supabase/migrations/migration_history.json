@@ -1,0 +1,25 @@
+{
+  "applied_migrations": [
+    "001_create_markets_table.sql",
+    "002_add_market_status.sql",
+    "003_remove_liquidity_volume_extra.sql",
+    "004_remove_image_url.sql",
+    "005_create_market_pairs_table.sql",
+    "006_add_pgvector_extension.sql",
+    "007_add_vector_search_functions.sql",
+    "008_update_vector_functions_for_rpc.sql",
+    "009_fix_vector_function_overloading.sql",
+    "010_fix_search_function_overloading.sql",
+    "011_fix_similarity_type_cast.sql",
+    "012_create_orderbooks_table.sql",
+    "013_create_arbitrage_opportunities_table.sql",
+    "014_add_extra_column_back.sql",
+    "015_remove_direction_check_constraint.sql",
+    "016_update_arbitrage_opportunities_schema.sql",
+    "017_create_get_paired_markets_enriched_function.sql",
+    "018_create_user_favorites_table.sql",
+    "019_create_get_markets_by_uuids_function.sql"
+  ],
+  "last_applied": "019_create_get_markets_by_uuids_function.sql"
+}
+
