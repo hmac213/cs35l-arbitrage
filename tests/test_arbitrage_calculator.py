@@ -124,13 +124,13 @@ def test_calculate_arbitrage_with_fees(calculator, sample_orderbook1, sample_ord
         assert opportunity.profit_per_share >= 0  # Should still be profitable after fees
 
 
-def test_find_max_size_per_level(calculator, sample_orderbook1, sample_orderbook2):
+def test_find_max_profitable_size(calculator, sample_orderbook1, sample_orderbook2):
     """Test per-level maximum size calculation."""
     yes_asks = sample_orderbook1.yes_asks
     no_asks = sample_orderbook2.no_asks
-    
-    max_size = calculator._find_max_size_per_level(yes_asks, no_asks, 0.0)
-    
+
+    max_size = calculator._find_max_profitable_size(yes_asks, no_asks)
+
     assert isinstance(max_size, int)
     assert max_size >= 0
     # Max size should be limited by available liquidity
@@ -138,35 +138,33 @@ def test_find_max_size_per_level(calculator, sample_orderbook1, sample_orderbook
     assert max_size <= sum(entry['quantity'] for entry in no_asks)
 
 
-def test_calculate_avg_price(calculator):
-    """Test average price calculation for filling a size."""
-    side = [
+def test_calculate_side_fill_cost(calculator):
+    """Test cost calculation for filling a size from one orderbook side."""
+    orderbook_side = [
         {'price': 0.60, 'quantity': 100},
         {'price': 0.61, 'quantity': 150},
         {'price': 0.62, 'quantity': 200}
     ]
-    
-    # Fill 150 units
-    avg_price, filled = calculator._calculate_avg_price(side, 150.0, is_ask=True)
-    
-    assert avg_price is not None
-    assert filled == 150.0
-    # Average should be between 0.60 and 0.61
-    assert 0.60 <= avg_price <= 0.61
+
+    # Fill 150 units: 100 @ 0.60 + 50 @ 0.61 = 60 + 30.50 = 90.50
+    cost = calculator._calculate_side_fill_cost(150, orderbook_side)
+
+    assert cost is not None
+    assert cost == pytest.approx(90.50, rel=0.01)
 
 
-def test_calculate_avg_price_partial_fill(calculator):
-    """Test average price when size exceeds available liquidity."""
-    side = [
+def test_calculate_side_fill_cost_insufficient_liquidity(calculator):
+    """Test cost calculation when size exceeds available liquidity."""
+    orderbook_side = [
         {'price': 0.60, 'quantity': 50},
         {'price': 0.61, 'quantity': 30}
     ]
-    
+
     # Try to fill 100 units (only 80 available)
-    avg_price, filled = calculator._calculate_avg_price(side, 100.0, is_ask=True)
-    
-    assert filled == 80.0
-    assert avg_price is not None
+    cost = calculator._calculate_side_fill_cost(100, orderbook_side)
+
+    # Should return None due to insufficient liquidity
+    assert cost is None
 
 
 def test_calculate_yes_no_arbitrage_profitable(calculator):
