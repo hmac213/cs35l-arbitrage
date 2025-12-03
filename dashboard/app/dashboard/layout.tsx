@@ -16,6 +16,12 @@ export default function DashboardLayout({
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Authentication guard: protect dashboard routes from unauthenticated access
+  // This effect performs two checks:
+  // 1. Initial check on mount (getUser) - handles page refreshes and direct navigation
+  // 2. Real-time listener (onAuthStateChange) - handles logout events, token expiration,
+  //    and concurrent sessions (e.g., user logs out in another tab)
+  // The listener ensures immediate redirect if auth state changes, preventing stale sessions
   useEffect(() => {
     const getUser = async () => {
       const {
@@ -31,6 +37,8 @@ export default function DashboardLayout({
 
     getUser();
 
+    // Subscribe to auth state changes for real-time session management
+    // This listener fires on: login, logout, token refresh, and session expiration
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {

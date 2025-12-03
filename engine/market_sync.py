@@ -314,13 +314,22 @@ class MarketSyncService:
                            f"({len(new_markets)} new, {len(markets_to_process) - len(new_markets)} missing embeddings) in parallel batches...")
                 
                 # Process markets in parallel batches using a single async context
+                # Batch processing strategy: parallel within batches, sequential between batches
+                # This balances throughput (parallel processing) with API rate limit safety
+                # (sequential batches prevent overwhelming external APIs like OpenAI/vector DB)
                 batch_size = EngineConfig.ASYNC_BATCH_SIZE
                 total_batches = (len(markets_to_process) + batch_size - 1) // batch_size
-                
+
                 async def process_all_markets() -> None:
                     """Process all markets in parallel batches within a single async context."""
                     async def process_market_batch(batch: List[DatabaseMarket], batch_idx: int) -> None:
-                        """Process a batch of markets in parallel."""
+                        """Process a batch of markets in parallel.
+                        
+                        Each market in the batch is processed concurrently (embedding generation,
+                        vector search, LLM verification queuing). We use return_exceptions=True
+                        to ensure one failure doesn't stop the entire batch - errors are logged
+                        but processing continues for other markets.
+                        """
                         logger.info(f"[SIMILARITY] Processing batch {batch_idx+1}/{total_batches} ({len(batch)} markets)...")
                         
                         tasks = []
@@ -330,7 +339,8 @@ class MarketSyncService:
                                        f"{market.market_id} ({market.exchange})")
                             tasks.append(self.similarity_service.process_new_market(market))
                         
-                        # Process batch in parallel
+                        # Process batch in parallel - all markets in batch execute concurrently
+                        # return_exceptions=True ensures exceptions are returned as results, not raised
                         results = await asyncio.gather(*tasks, return_exceptions=True)
                         
                         # Log results
@@ -351,6 +361,7 @@ class MarketSyncService:
                     
                     # Process all batches sequentially (but each batch processes markets in parallel)
                     # This prevents overwhelming the API with too many concurrent requests
+                    # Sequential batches act as a rate limiter while still maximizing throughput within each batch
                     for batch_idx in range(total_batches):
                         start_idx = batch_idx * batch_size
                         end_idx = min(start_idx + batch_size, len(markets_to_process))

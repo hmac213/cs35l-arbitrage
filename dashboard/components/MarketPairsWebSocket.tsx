@@ -56,6 +56,14 @@ export function MarketPairsWebSocket({ budget, onBudgetChange }: MarketPairsWebS
     fetchInitialData();
   }, []);
 
+  // WebSocket connection management with automatic reconnection and fallback
+  // This effect handles the complex lifecycle of maintaining a persistent connection:
+  // 1. Initial connection attempt with timeout detection
+  // 2. Automatic reconnection on failures (up to maxReconnectAttempts)
+  // 3. Graceful fallback to REST API polling if WebSocket permanently fails
+  // 4. Ping/pong keepalive to detect stale connections
+  // The hasConnectedOnce flag prevents showing error messages during initial connection,
+  // only surfacing errors after a successful connection is lost.
   useEffect(() => {
     let ws: WebSocket | null = null;
     let reconnectTimeout: NodeJS.Timeout | null = null;
@@ -95,6 +103,9 @@ export function MarketPairsWebSocket({ budget, onBudgetChange }: MarketPairsWebS
           setIsConnected(true);
           setError(null);
 
+          // Keepalive ping every 30 seconds to detect stale connections
+          // Some proxies/firewalls close idle WebSocket connections, so we proactively
+          // send pings to keep the connection alive and detect disconnections quickly
           pingInterval = setInterval(() => {
             if (ws?.readyState === WebSocket.OPEN) {
               ws.send("ping");
@@ -154,12 +165,18 @@ export function MarketPairsWebSocket({ budget, onBudgetChange }: MarketPairsWebS
             }
           }
 
+          // Reconnection strategy: exponential backoff would be ideal, but we use fixed 3s delay
+          // for simplicity. Only reconnect if we haven't exceeded max attempts and connection
+          // wasn't closed cleanly (code 1000 = normal closure, don't reconnect).
           if (event.code !== 1000 && reconnectAttempts < maxReconnectAttempts) {
             reconnectAttempts++;
             reconnectTimeout = setTimeout(() => {
               connect();
             }, 3000);
           } else if (reconnectAttempts >= maxReconnectAttempts && hasConnectedOnce) {
+            // After exhausting reconnection attempts, gracefully degrade to REST polling
+            // This ensures the UI remains functional even if WebSocket infrastructure fails
+            // Poll every 10 seconds (slower than WebSocket updates but acceptable fallback)
             console.warn("Max WebSocket reconnect attempts reached. Falling back to REST API polling.");
             setError("WebSocket unavailable. Using REST API fallback.");
             fallbackInterval = setInterval(async () => {
