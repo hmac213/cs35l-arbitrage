@@ -21,13 +21,33 @@ export function MarketDetailsModal({ pair, isOpen, onClose }: MarketDetailsModal
       }
     };
 
+    const handleWheel = (e: WheelEvent) => {
+      // Check if the event target is within the modal
+      const target = e.target as HTMLElement;
+      const modal = document.querySelector('[data-modal="market-details"]');
+      
+      if (modal && modal.contains(target)) {
+        // Allow scrolling within the modal - don't prevent, just stop propagation to background
+        e.stopPropagation();
+        return;
+      }
+      
+      // Prevent scrolling on the background when modal is open
+      if (isOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
     if (isOpen) {
       document.addEventListener("keydown", handleEscape);
+      document.addEventListener("wheel", handleWheel, { passive: false, capture: true });
       document.body.style.overflow = "hidden";
     }
 
     return () => {
       document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("wheel", handleWheel, { capture: true });
       document.body.style.overflow = "unset";
     };
   }, [isOpen, onClose]);
@@ -56,10 +76,26 @@ export function MarketDetailsModal({ pair, isOpen, onClose }: MarketDetailsModal
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
       onClick={onClose}
+      onWheelCapture={(e) => {
+        // Stop propagation in capture phase BEFORE chat sidebar can intercept
+        const target = e.target as HTMLElement;
+        const modal = e.currentTarget.querySelector('[data-modal="market-details"]');
+        if (modal && (modal.contains(target) || target === modal)) {
+          e.stopPropagation();
+        }
+      }}
     >
       <div
+        data-modal="market-details"
+        data-modal-content
         className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
+        onWheelCapture={(e) => {
+          // Stop propagation in capture phase to prevent chat sidebar from intercepting
+          e.stopPropagation();
+          e.stopImmediatePropagation();
+        }}
+        style={{ overscrollBehavior: 'contain' }}
       >
         {/* Header */}
         <div className="sticky top-0 z-20 flex items-center justify-between border-b border-zinc-800 bg-zinc-950 px-6 py-4">
