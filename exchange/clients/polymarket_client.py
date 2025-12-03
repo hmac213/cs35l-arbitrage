@@ -851,7 +851,7 @@ class PolymarketClient(ExchangeClient):
                 try:
                     message = await asyncio.wait_for(
                         self._ws_connection.recv(),
-                        timeout=10.0
+                        timeout=60.0
                     )
                 except asyncio.TimeoutError:
                     continue
