@@ -2,7 +2,7 @@
 
 import logging
 import asyncio
-from typing import Dict, Optional, Callable, Set
+from typing import Dict, Optional, Callable, Set, Any, Any
 from datetime import datetime, timezone
 
 from exchange.clients.kalshi_client import KalshiClient
@@ -27,7 +27,8 @@ class OrderbookStreamer:
         kalshi_client: Optional[KalshiClient] = None,
         polymarket_client: Optional[PolymarketClient] = None,
         db_client: Optional[SupabaseClient] = None,
-        orderbook_poller: Optional[OrderbookPoller] = None
+        orderbook_poller: Optional[OrderbookPoller] = None,
+        update_queue: Optional[Any] = None
     ):
         """Initialize the orderbook streamer.
         
@@ -36,6 +37,7 @@ class OrderbookStreamer:
             polymarket_client: Polymarket client instance. If None, creates a new one.
             db_client: Database client instance. If None, creates a new one.
             orderbook_poller: OrderbookPoller instance for conversion logic. If None, creates a new one.
+            update_queue: OrderbookUpdateQueue instance for event-driven processing. If None, stores directly to DB.
         """
         self.kalshi_client = kalshi_client or KalshiClient()
         self.polymarket_client = polymarket_client or PolymarketClient()
@@ -45,6 +47,7 @@ class OrderbookStreamer:
             polymarket_client=self.polymarket_client,
             db_client=self.db_client
         )
+        self.update_queue = update_queue
         
         # Track subscriptions
         self._kalshi_subscriptions: Dict[str, str] = {}  # market_uuid -> ticker
@@ -53,6 +56,7 @@ class OrderbookStreamer:
         self._running = False
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._loop_task: Optional[asyncio.Task] = None
+        self._queue_loop: Optional[asyncio.AbstractEventLoop] = None  # Event loop where queue is running
     
     async def start(self) -> None:
         """Start the websocket streamer.
@@ -120,17 +124,31 @@ class OrderbookStreamer:
     
     async def _refresh_subscriptions(self) -> None:
         """Internal method to refresh subscriptions."""
-        # Get all market pairs
-        market_pairs = self.db_client.get_all_market_pairs()
+        # Get all market pairs (run in executor to avoid blocking)
+        loop = asyncio.get_event_loop()
+        market_pairs = await loop.run_in_executor(None, self.db_client.get_all_market_pairs)
         current_pair_ids = {pair.id for pair in market_pairs}
+        
+        # Collect all unique market UUIDs
+        all_market_uuids = set()
+        for pair in market_pairs:
+            all_market_uuids.add(pair.market_1_id)
+            all_market_uuids.add(pair.market_2_id)
+        
+        # Batch fetch all markets in one query (run in executor)
+        markets_dict = await loop.run_in_executor(
+            None,
+            self.db_client.get_markets_by_uuids,
+            list(all_market_uuids)
+        )
         
         # Collect all unique markets from all pairs
         kalshi_tickers = {}  # ticker -> (market_uuid, callback)
         polymarket_token_ids = {}  # token_id -> (market_uuid, callback)
         
         for pair in market_pairs:
-            market1 = self._get_market_by_id(pair.market_1_id)
-            market2 = self._get_market_by_id(pair.market_2_id)
+            market1 = markets_dict.get(pair.market_1_id)
+            market2 = markets_dict.get(pair.market_2_id)
             
             if not market1 or not market2:
                 continue
@@ -168,22 +186,23 @@ class OrderbookStreamer:
                 # Update subscriptions tracking
                 for ticker, (market_uuid, _) in kalshi_tickers.items():
                     self._kalshi_subscriptions[market_uuid] = ticker
-                logger.info(f"Subscribed to {len(tickers)} Kalshi markets in batch")
+                logger.info(f"Subscribed to {len(tickers)} Kalshi markets")
             except Exception as e:
-                logger.error(f"Failed to batch subscribe to Kalshi markets: {e}")
+                logger.error(f"Failed to batch subscribe to Kalshi markets: {e}", exc_info=True)
         
         # Subscribe to all Polymarket markets at once (if Polymarket supports batch)
         if polymarket_token_ids:
             # For now, subscribe individually since we need to check if Polymarket supports batch
             # TODO: Add batch subscribe to PolymarketClient if supported
+            success_count = 0
             for token_id, (market_uuid, callback) in polymarket_token_ids.items():
                 try:
                     await self.polymarket_client.subscribe_orderbook(token_id, callback)
                     self._polymarket_subscriptions[market_uuid] = token_id
+                    success_count += 1
                 except Exception as e:
-                    logger.error(f"Failed to subscribe to Polymarket market {token_id}: {e}")
-            if polymarket_token_ids:
-                logger.info(f"Subscribed to {len(polymarket_token_ids)} Polymarket markets")
+                    logger.error(f"Failed to subscribe to Polymarket market {token_id}: {e}", exc_info=True)
+            logger.info(f"Subscribed to {success_count}/{len(polymarket_token_ids)} Polymarket markets")
         
         self._active_market_pairs = current_pair_ids
     
@@ -316,15 +335,57 @@ class OrderbookStreamer:
             Callback function that processes orderbook updates.
         """
         def callback(orderbook: OrderBook) -> None:
-            """Process orderbook update and store it."""
+            """Process orderbook update and enqueue it for processing."""
             try:
+                # Log callback invocation for diagnostics
+                logger.debug(f"Callback invoked for {market.market_id}: bids={len(orderbook.bids)}, asks={len(orderbook.asks)}")
+                
+                # Check if this is an empty orderbook (no bids/asks)
+                # Empty deltas are normal (no changes), but we should still process initial snapshots
+                # to establish the state, even if they're empty
+                is_empty = not orderbook.bids and not orderbook.asks
+                
                 # Convert OrderBook to OrderbookSnapshot
                 snapshot = self.orderbook_poller._convert_orderbook_to_snapshot(orderbook, market)
                 
-                # Store in database
-                self.db_client.store_orderbook(snapshot)
+                # Skip empty snapshots - they represent markets with no trading activity
+                # We don't need to enqueue these as they won't trigger any arbitrage calculations
+                # The conversion logic already logs these at DEBUG level
+                if not snapshot.yes_bids and not snapshot.yes_asks and not snapshot.no_bids and not snapshot.no_asks:
+                    logger.debug(f"Skipping empty snapshot for {market.market_id} (no orderbook data - market has no active trading)")
+                    return
                 
-                logger.debug(f"Stored orderbook update for {market.market_id} ({market.exchange})")
+                # If update_queue is available, enqueue for event-driven processing
+                if self.update_queue:
+                    from .orderbook_update_queue import OrderbookUpdate
+                    update = OrderbookUpdate(
+                        market_id=market.id,
+                        exchange=market.exchange,
+                        orderbook=snapshot,
+                        timestamp=snapshot.timestamp or datetime.now(timezone.utc)
+                    )
+                    # Enqueue asynchronously (non-blocking)
+                    # Callback runs in executor thread, so we need to schedule on the queue's event loop
+                    if self._queue_loop:
+                        try:
+                            # Check if loop is running (this might fail in executor thread, so catch it)
+                            is_running = self._queue_loop.is_running()
+                            if is_running:
+                                # Schedule on the queue's event loop (which is in a different thread)
+                                future = asyncio.run_coroutine_threadsafe(
+                                    self.update_queue.enqueue(update),
+                                    self._queue_loop
+                                )
+                                logger.debug(f"Scheduled enqueue for {market.market_id} (yes_bids={len(snapshot.yes_bids)}, yes_asks={len(snapshot.yes_asks)})")
+                            else:
+                                logger.warning(f"Queue loop exists but is not running for {market.market_id}")
+                        except (RuntimeError, AttributeError) as e:
+                            logger.warning(f"Error checking queue loop status for {market.market_id}: {e}")
+                    else:
+                        logger.warning(f"No queue loop set for {market.market_id}")
+                else:
+                    # Fallback: store directly in database (old behavior)
+                    self.db_client.store_orderbook(snapshot)
             except Exception as e:
                 logger.error(f"Error processing orderbook update for {market.market_id}: {e}", exc_info=True)
         

@@ -11,6 +11,8 @@ from exchange.clients.polymarket_client import PolymarketClient
 from engine.arbitrage_service import ArbitrageService
 from engine.orderbook_streamer import OrderbookStreamer
 from engine.orderbook_poller import OrderbookPoller
+from engine.orderbook_update_queue import OrderbookUpdateQueue
+from engine.arbitrage_calculator import ArbitrageCalculator
 from .config import ServiceConfig
 
 logger = logging.getLogger(__name__)
@@ -51,21 +53,26 @@ class ArbitrageRunner:
             api_key=config.polymarket_api_key
         )
         
-        # Initialize orderbook poller (used by streamer for storage)
+        # Initialize orderbook poller (used by streamer for conversion)
         self.orderbook_poller = OrderbookPoller(
             kalshi_client=self.kalshi_client,
             polymarket_client=self.polymarket_client,
             db_client=self.db_client
         )
         
-        # Initialize arbitrage service
-        # Will be updated to use_stored_orderbooks=True when websocket mode starts
-        self.arbitrage_service = ArbitrageService(
-            db_client=self.db_client,
-            orderbook_poller=self.orderbook_poller,
-            poll_interval=config.arbitrage_poll_interval,
-            use_stored_orderbooks=False  # Will be set to True in websocket mode
-        )
+        # Initialize arbitrage calculator (used by queue)
+        self.arbitrage_calculator = ArbitrageCalculator()
+        
+        # Initialize orderbook update queue (event-driven processing)
+        self.update_queue: Optional[OrderbookUpdateQueue] = None
+        if config.use_websockets:
+            self.update_queue = OrderbookUpdateQueue(
+                db_client=self.db_client,
+                arbitrage_calculator=self.arbitrage_calculator,
+                max_workers=4,
+                queue_maxsize=10000,
+                debounce_ms=100
+            )
         
         # Initialize websocket streamer (optional)
         self.orderbook_streamer: Optional[OrderbookStreamer] = None
@@ -74,7 +81,8 @@ class ArbitrageRunner:
                 kalshi_client=self.kalshi_client,
                 polymarket_client=self.polymarket_client,
                 db_client=self.db_client,
-                orderbook_poller=self.orderbook_poller
+                orderbook_poller=self.orderbook_poller,
+                update_queue=self.update_queue
             )
         
         # State
@@ -133,22 +141,44 @@ class ArbitrageRunner:
         if not self.orderbook_streamer:
             raise ValueError("OrderbookStreamer is not initialized")
         
-        # Update arbitrage service to use stored orderbooks
-        self.arbitrage_service.use_stored_orderbooks = True
+        if not self.update_queue:
+            raise ValueError("OrderbookUpdateQueue is not initialized")
         
         # Create event loop in a separate thread
         def run_event_loop():
             self._loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self._loop)
             
-            # Start streamer
-            self._loop.run_until_complete(self.orderbook_streamer.start())
-            
-            # Start refresh task
-            self._refresh_task = self._loop.create_task(self._refresh_subscriptions_loop())
-            
-            # Run event loop
-            self._loop.run_forever()
+            try:
+                # Pass the queue's event loop to the streamer FIRST so callbacks can schedule work
+                # This must be done before starting the streamer, as callbacks are created during start()
+                if self.orderbook_streamer:
+                    self.orderbook_streamer._queue_loop = self._loop
+                    logger.debug(f"Set queue loop on streamer: {self._loop}")
+                
+                # Start update queue first (event-driven processing)
+                logger.info("Starting update queue...")
+                self._loop.run_until_complete(self.update_queue.start())
+                logger.info("Update queue started successfully")
+                
+                # Start streamer (will enqueue updates to the queue)
+                logger.info("Starting orderbook streamer...")
+                self._loop.run_until_complete(self.orderbook_streamer.start())
+                logger.info("Orderbook streamer started successfully")
+                
+                # Verify queue loop is still set
+                if self.orderbook_streamer._queue_loop != self._loop:
+                    logger.warning(f"Queue loop mismatch! streamer._queue_loop={self.orderbook_streamer._queue_loop}, expected={self._loop}")
+                
+                # Start refresh task
+                self._refresh_task = self._loop.create_task(self._refresh_subscriptions_loop())
+                
+                # Run event loop
+                logger.info("Event loop running...")
+                self._loop.run_forever()
+            except Exception as e:
+                logger.error(f"Error in event loop: {e}", exc_info=True)
+                raise
         
         self._loop_thread = threading.Thread(target=run_event_loop, daemon=True)
         self._loop_thread.start()
@@ -161,24 +191,34 @@ class ArbitrageRunner:
         if not self.orderbook_streamer.is_connected():
             raise RuntimeError("Failed to establish websocket connections")
         
-        # Start arbitrage service (it will use stored orderbooks)
-        self.arbitrage_service.start()
+        # Note: No longer starting ArbitrageService polling - everything is event-driven now
     
     def _stop_websocket_mode(self) -> None:
         """Stop websocket mode."""
-        # Stop arbitrage service
-        self.arbitrage_service.stop()
-        
         if self._loop:
-            # Schedule stop
-            asyncio.run_coroutine_threadsafe(
-                self.orderbook_streamer.stop() if self.orderbook_streamer else asyncio.sleep(0),
-                self._loop
-            )
+            # Schedule stop for streamer and queue
+            if self.orderbook_streamer:
+                asyncio.run_coroutine_threadsafe(
+                    self.orderbook_streamer.stop(),
+                    self._loop
+                )
+            
+            if self.update_queue:
+                asyncio.run_coroutine_threadsafe(
+                    self.update_queue.stop(),
+                    self._loop
+                )
             
             # Cancel tasks
             if self._refresh_task:
-                asyncio.run_coroutine_threadsafe(self._refresh_task.cancel(), self._loop)
+                # cancel() returns a coroutine, so we need to await it
+                async def cancel_task():
+                    self._refresh_task.cancel()
+                    try:
+                        await self._refresh_task
+                    except asyncio.CancelledError:
+                        pass
+                asyncio.run_coroutine_threadsafe(cancel_task(), self._loop)
             
             # Stop event loop
             self._loop.call_soon_threadsafe(self._loop.stop)
@@ -193,6 +233,9 @@ class ArbitrageRunner:
                 await asyncio.sleep(self.config.websocket_refresh_subscriptions_interval)
                 if self.orderbook_streamer and self._running:
                     await self.orderbook_streamer.refresh_subscriptions()
+                    # Also refresh market-to-pairs mapping in queue
+                    if self.update_queue:
+                        self.update_queue.refresh_market_pairs_mapping()
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -230,6 +273,10 @@ class ArbitrageRunner:
             stats['websocket_connected'] = self.orderbook_streamer.is_connected()
             stats['kalshi_subscriptions'] = len(self.orderbook_streamer._kalshi_subscriptions)
             stats['polymarket_subscriptions'] = len(self.orderbook_streamer._polymarket_subscriptions)
+        
+        if self.update_queue:
+            queue_stats = self.update_queue.get_stats()
+            stats['queue'] = queue_stats
         
         return stats
 
