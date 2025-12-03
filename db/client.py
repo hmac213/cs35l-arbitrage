@@ -1,10 +1,13 @@
 """Supabase database client wrapper."""
 
 import os
+import logging
 from typing import List, Optional, Dict, Any
 from supabase import create_client, Client
 
 from .models import DatabaseMarket, MarketPair, OrderbookSnapshot, ArbitrageOpportunity
+
+logger = logging.getLogger(__name__)
 
 
 class SupabaseClient:
@@ -120,6 +123,99 @@ class SupabaseClient:
         if response.data and len(response.data) > 0:
             return DatabaseMarket.from_dict(response.data[0])
         return None
+    
+    def get_market_by_uuid(self, market_uuid: str) -> Optional[DatabaseMarket]:
+        """Get a single market by UUID.
+        
+        Args:
+            market_uuid: The market UUID from the database.
+            
+        Returns:
+            DatabaseMarket instance if found, None otherwise.
+        """
+        response = self.client.table("markets").select("*").eq("id", market_uuid).limit(1).execute()
+        
+        if response.data and len(response.data) > 0:
+            return DatabaseMarket.from_dict(response.data[0])
+        return None
+    
+    def get_markets_by_uuids(self, market_uuids: List[str]) -> Dict[str, DatabaseMarket]:
+        """Get multiple markets by UUIDs in a single query using RPC function.
+        
+        Args:
+            market_uuids: List of market UUIDs.
+            
+        Returns:
+            Dictionary mapping UUID to DatabaseMarket instance.
+        """
+        if not market_uuids:
+            return {}
+        
+        try:
+            # Use RPC function for efficient batch query
+            response = self.client.rpc("get_markets_by_uuids", {"market_uuids": market_uuids}).execute()
+        except Exception as e:
+            # Fallback to PostgREST 'in' filter if RPC fails
+            logger.warning(f"RPC get_markets_by_uuids failed, using fallback: {e}")
+            response = self.client.table("markets").select("*").in_("id", market_uuids).execute()
+        
+        result = {}
+        if response.data:
+            for row in response.data:
+                market = DatabaseMarket.from_dict(row)
+                if market.id:
+                    result[market.id] = market
+        
+        return result
+    
+    def get_latest_orderbooks_batch(
+        self, 
+        market_uuids: List[str], 
+        exchanges: Optional[Dict[str, str]] = None
+    ) -> Dict[str, OrderbookSnapshot]:
+        """Get latest orderbooks for multiple markets in a single query.
+        
+        Args:
+            market_uuids: List of market UUIDs.
+            exchanges: Optional dict mapping market_uuid to exchange name. If None, fetches for all.
+            
+        Returns:
+            Dictionary mapping market_uuid to OrderbookSnapshot.
+        """
+        if not market_uuids:
+            return {}
+        
+        # Use a subquery to get latest orderbook per market
+        # We'll fetch all orderbooks for these markets and filter to latest per market
+        response = self.client.table("orderbooks") \
+            .select("*") \
+            .in_("market_id", market_uuids) \
+            .order("timestamp", desc=True) \
+            .execute()
+        
+        result = {}
+        seen_keys = set()  # Track (market_id, exchange) combinations we've seen
+        
+        if response.data:
+            for row in response.data:
+                market_uuid = row.get("market_id")
+                exchange = row.get("exchange")
+                key = (market_uuid, exchange)
+                
+                # Skip if we already have a newer orderbook for this market+exchange
+                if key in seen_keys:
+                    continue
+                
+                # If exchanges dict provided, filter by exchange
+                if exchanges and market_uuid in exchanges:
+                    if exchange != exchanges[market_uuid]:
+                        continue
+                
+                orderbook = OrderbookSnapshot.from_dict(row)
+                result[market_uuid] = orderbook
+                seen_keys.add(key)
+        
+        return result
     
     def get_markets_by_exchange(
         self,
