@@ -189,8 +189,19 @@ class ArbitrageCalculator:
         """
         Find maximum fillable size where every price level remains profitable.
 
-        Walks through both orderbooks simultaneously, filling the minimum available
-        quantity at each price level, stopping when profitability drops below threshold.
+        This implements a greedy orderbook traversal algorithm that walks through
+        both orderbooks simultaneously, consuming liquidity level-by-level. The key
+        insight is that we must fill BOTH sides (YES and NO) equally - we can't
+        buy 100 YES shares and only 50 NO shares, as that would leave unmatched risk.
+
+        Algorithm:
+        1. Start at the best prices (top of orderbook) for both sides
+        2. At each level, fill the minimum available quantity (constraint: both sides must match)
+        3. Move to next level when current level is exhausted
+        4. Stop when profitability drops below min_profit threshold OR either orderbook is exhausted
+
+        The "remaining quantity" tracking allows us to partially consume a price level
+        if the other side exhausts first, then resume from the same level on next iteration.
 
         Returns:
             Maximum number of shares that can be profitably arbitraged
@@ -204,6 +215,7 @@ class ArbitrageCalculator:
 
         while yes_level_index < len(yes_asks) and no_level_index < len(no_asks):
             # Load next YES level if current is exhausted
+            # We track remaining quantity separately to handle partial fills across levels
             if yes_quantity_remaining <= 0:
                 yes_price = float(yes_asks[yes_level_index].get('price', 0))
                 yes_quantity_remaining = float(yes_asks[yes_level_index].get('quantity', 0))
@@ -215,12 +227,14 @@ class ArbitrageCalculator:
                 no_quantity_remaining = float(no_asks[no_level_index].get('quantity', 0))
                 no_level_index += 1
 
-            # Stop if this price combination is no longer profitable
+            # Early exit: if this price level isn't profitable, no deeper levels will be either
+            # (orderbooks are sorted best-to-worst, so prices only get worse)
             level_profit = self._calculate_profit_per_share(yes_price, no_price)
             if level_profit <= self.min_profit:
                 break
 
-            # Fill the minimum available quantity at this level
+            # Fill the minimum available quantity - we must match both sides exactly
+            # If YES has 100 shares and NO has 50, we can only fill 50 (constrained by NO)
             fill_quantity = min(yes_quantity_remaining, no_quantity_remaining)
             total_shares_filled += int(fill_quantity)
             yes_quantity_remaining -= fill_quantity

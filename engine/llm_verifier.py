@@ -59,6 +59,15 @@ class LLMVerifier:
         market1_info = self._format_market_info(market1)
         market2_info = self._format_market_info(market2)
         
+        # Prompt engineering: structured to guide LLM toward accurate matching
+        # Key considerations:
+        # 1. Emphasize "same question AND same outcome" - markets can ask similar questions
+        #    but resolve differently (e.g., "Will X happen?" vs "Will X NOT happen?")
+        # 2. Resolution criteria matter - markets with different rules aren't identical even
+        #    if they seem similar (e.g., "Will X win?" vs "Will X win by >5 points?")
+        # 3. Outcome space must match - binary markets can't match multi-outcome markets
+        # 4. Wording differences are acceptable if meaning is preserved (semantic equivalence)
+        # The low temperature (0.1) ensures consistent, deterministic results across runs
         prompt = f"""You are an expert at analyzing prediction markets. Your task is to determine if two prediction markets are asking the same question and will resolve to the same outcome.
 
 Market 1 ({market1.exchange}):
@@ -118,8 +127,14 @@ Respond with a clear yes or no answer using the provided function."""
                     {"role": "user", "content": prompt}
                 ],
                 tools=tools,
+                # Force function calling to ensure structured output - prevents LLM from
+                # returning free-form text that would require parsing. This guarantees
+                # we receive a boolean is_identical and float confidence in a parseable format.
                 tool_choice={"type": "function", "function": {"name": "verify_market_match"}},
-                temperature=0.1  # Low temperature for more deterministic results
+                # Low temperature (0.1) for deterministic, consistent results
+                # Higher temperature would introduce variability that could cause the same
+                # market pair to be verified differently on repeated runs
+                temperature=0.1
             )
             
             logger.debug(f"[LLM] Received response from OpenAI API")
