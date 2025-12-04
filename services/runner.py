@@ -78,14 +78,28 @@ class ServiceRunner:
             
             # Keep running until interrupted
             import time
+            last_stats_log = time.time()
+            stats_interval = 30  # Log queue health every 30 seconds
+            
             while True:
                 time.sleep(1)
                 
-                # Log stats periodically
+                # Log queue health stats periodically
                 if self.arbitrage_runner:
-                    stats = self.arbitrage_runner.get_stats()
-                    if stats.get('running'):
-                        logger.debug(f"Runner stats: {stats}")
+                    current_time = time.time()
+                    if current_time - last_stats_log >= stats_interval:
+                        stats = self.arbitrage_runner.get_stats()
+                        if stats.get('running') and 'queue' in stats:
+                            queue_stats = stats['queue']
+                            logger.info(
+                                f"Queue health: enqueued={queue_stats.get('enqueued', 0)}, "
+                                f"processed={queue_stats.get('processed', 0)}, "
+                                f"dropped={queue_stats.get('dropped', 0)}, "
+                                f"queue_size={queue_stats.get('queue_size', 0)}, "
+                                f"circuit={queue_stats.get('circuit_state', 'unknown')}, "
+                                f"opportunities={queue_stats.get('opportunities_found', 0)}"
+                            )
+                        last_stats_log = current_time
         
         except KeyboardInterrupt:
             logger.info("Received keyboard interrupt")

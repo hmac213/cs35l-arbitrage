@@ -18,12 +18,6 @@ from .runner import ServiceRunner
 # Load environment variables
 load_dotenv()
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -50,8 +44,33 @@ def main() -> int:
         action='store_true',
         help='Enable market polling service (not implemented yet)'
     )
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Enable DEBUG logging level'
+    )
+    parser.add_argument(
+        '--log-level',
+        type=str,
+        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
+        help='Set logging level (default: INFO)'
+    )
     
     args = parser.parse_args()
+    
+    # Configure logging level based on arguments
+    log_level = logging.DEBUG if args.debug else logging.INFO
+    if args.log_level:
+        log_level = getattr(logging, args.log_level.upper())
+    
+    # Configure logging with the selected level
+    logging.basicConfig(
+        level=log_level,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        force=True  # Override any existing configuration
+    )
+    
+    logger.info(f"Logging level set to {logging.getLevelName(log_level)}")
     
     # Create configuration from environment
     config = ServiceConfig.from_env()

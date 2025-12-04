@@ -6,6 +6,7 @@ if [ -d "venv" ]; then
     source venv/bin/activate
 fi
 
-# Run the service
-python -m services.main "$@"
+# Run the service with DEBUG logging enabled
+# To use INFO level instead, remove --debug or use --log-level INFO
+python -m services.main --log-level INFO "$@"
 

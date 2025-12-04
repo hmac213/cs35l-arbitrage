@@ -17,16 +17,46 @@ CREATE INDEX IF NOT EXISTS idx_user_favorites_market_pair_id ON user_favorites(m
 ALTER TABLE user_favorites ENABLE ROW LEVEL SECURITY;
 
 -- Policy: Users can only see their own favorites
-CREATE POLICY "Users can view own favorites"
-    ON user_favorites FOR SELECT
-    USING (auth.uid() = user_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'user_favorites' 
+        AND policyname = 'Users can view own favorites'
+    ) THEN
+        CREATE POLICY "Users can view own favorites"
+            ON user_favorites FOR SELECT
+            USING (auth.uid() = user_id);
+    END IF;
+END $$;
 
 -- Policy: Users can only insert their own favorites
-CREATE POLICY "Users can insert own favorites"
-    ON user_favorites FOR INSERT
-    WITH CHECK (auth.uid() = user_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'user_favorites' 
+        AND policyname = 'Users can insert own favorites'
+    ) THEN
+        CREATE POLICY "Users can insert own favorites"
+            ON user_favorites FOR INSERT
+            WITH CHECK (auth.uid() = user_id);
+    END IF;
+END $$;
 
 -- Policy: Users can only delete their own favorites
-CREATE POLICY "Users can delete own favorites"
-    ON user_favorites FOR DELETE
-    USING (auth.uid() = user_id);
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_policies 
+        WHERE schemaname = 'public' 
+        AND tablename = 'user_favorites' 
+        AND policyname = 'Users can delete own favorites'
+    ) THEN
+        CREATE POLICY "Users can delete own favorites"
+            ON user_favorites FOR DELETE
+            USING (auth.uid() = user_id);
+    END IF;
+END $$;

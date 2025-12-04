@@ -205,6 +205,10 @@ class OrderbookPoller:
         The normalized OrderBook has bids/asks that combine yes and no sides.
         We need to extract the original yes/no structure from metadata.
         """
+        # Log orderbook structure for debugging if it's empty
+        if not orderbook.bids and not orderbook.asks:
+            logger.debug(f"Empty orderbook received for {market.market_id}: metadata keys={list((orderbook.metadata or {}).keys())}")
+        
         metadata = orderbook.metadata or {}
         
         # Try to extract yes/no structure from raw metadata
@@ -301,10 +305,61 @@ class OrderbookPoller:
                     no_price = entry_meta.get('no_price', 1.0 - float(entry.price))
                     no_bids.append({'price': float(no_price), 'quantity': float(entry.quantity)})
         
-        # Last resort: If we still don't have structure, this is an error case
-        # Don't make assumptions - log a warning
+        # Last resort: If we still don't have structure, try to infer from standard bids/asks
+        # For binary markets, if we have bids and asks but no yes/no metadata, assume:
+        # - Bids are YES bids (people buying YES)
+        # - Asks are YES asks (people selling YES)
+        # - NO bids = YES asks inverted (1 - YES ask price)
+        # - NO asks = YES bids inverted (1 - YES bid price)
+        if not yes_bids and not yes_asks and (orderbook.bids or orderbook.asks):
+            logger.debug(f"No yes/no metadata found for {market.market_id}, inferring from standard bids/asks structure (bids={len(orderbook.bids)}, asks={len(orderbook.asks)})")
+            # Treat all bids as YES bids
+            for entry in orderbook.bids:
+                price = float(entry.price)
+                quantity = float(entry.quantity)
+                # Only add if price is in valid range (0-1 for binary markets)
+                if 0 <= price <= 1:
+                    yes_bids.append({'price': price, 'quantity': quantity})
+                    # YES bid at price X = NO ask at price (1-X)
+                    no_asks.append({'price': 1.0 - price, 'quantity': quantity})
+            
+            # Treat all asks as YES asks
+            for entry in orderbook.asks:
+                price = float(entry.price)
+                quantity = float(entry.quantity)
+                # Only add if price is in valid range (0-1 for binary markets)
+                if 0 <= price <= 1:
+                    yes_asks.append({'price': price, 'quantity': quantity})
+                    # YES ask at price X = NO bid at price (1-X)
+                    no_bids.append({'price': 1.0 - price, 'quantity': quantity})
+        
+        # Final check: If we still don't have structure, this is an error case
         if not yes_bids and not yes_asks:
-            logger.warning(f"Could not extract yes/no structure from Kalshi orderbook for market {market.market_id}. Orderbook may be incomplete.")
+            # If orderbook is completely empty (no bids, no asks), this is expected - just return empty snapshot
+            if not orderbook.bids and not orderbook.asks:
+                logger.debug(f"Empty orderbook for market {market.market_id} (no bids/asks) - this is expected for markets without active trading")
+                return OrderbookSnapshot(
+                    market_id=market.id,
+                    exchange=market.exchange,
+                    yes_bids=[],
+                    yes_asks=[],
+                    no_bids=[],
+                    no_asks=[],
+                    timestamp=orderbook.timestamp or datetime.now(timezone.utc)
+                )
+            
+            # If there ARE bids/asks but we couldn't parse them, this is a real problem
+            # Log detailed info to help diagnose
+            metadata = orderbook.metadata or {}
+            sample_bid_meta = orderbook.bids[0].metadata if orderbook.bids else {}
+            sample_ask_meta = orderbook.asks[0].metadata if orderbook.asks else {}
+            logger.warning(
+                f"Could not extract yes/no structure from Kalshi orderbook for market {market.market_id}. "
+                f"Orderbook has {len(orderbook.bids)} bids and {len(orderbook.asks)} asks but parsing failed. "
+                f"Metadata keys: {list(metadata.keys())}, "
+                f"Sample bid metadata: {sample_bid_meta}, "
+                f"Sample ask metadata: {sample_ask_meta}"
+            )
             # Return empty orderbook snapshot rather than incorrect data
             return OrderbookSnapshot(
                 market_id=market.id,

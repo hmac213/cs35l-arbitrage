@@ -730,22 +730,32 @@ class KalshiClient(ExchangeClient):
                         price_cents = float(bid[0])
                         price = price_cents / 100.0 if price_cents > 1 else price_cents
                         quantity = float(bid[1])
-                        bids.append(OrderBookEntry(price=price, quantity=quantity, metadata={'raw': bid}))
+                        # Add side/type metadata for conversion logic
+                        metadata = {'raw': bid, 'side': 'yes', 'type': 'bid'}
+                        bids.append(OrderBookEntry(price=price, quantity=quantity, metadata=metadata))
                     elif isinstance(bid, dict):
                         price = float(bid.get('price', bid.get('yes_price', 0)))
                         quantity = float(bid.get('quantity', bid.get('size', 0)))
-                        bids.append(OrderBookEntry(price=price, quantity=quantity, metadata=bid))
+                        # Add side/type metadata, preserving original dict
+                        metadata = dict(bid)
+                        metadata.update({'side': 'yes', 'type': 'bid'})
+                        bids.append(OrderBookEntry(price=price, quantity=quantity, metadata=metadata))
                 
                 for ask in yes_asks:
                     if isinstance(ask, (list, tuple)) and len(ask) >= 2:
                         price_cents = float(ask[0])
                         price = price_cents / 100.0 if price_cents > 1 else price_cents
                         quantity = float(ask[1])
-                        asks.append(OrderBookEntry(price=price, quantity=quantity, metadata={'raw': ask}))
+                        # Add side/type metadata for conversion logic
+                        metadata = {'raw': ask, 'side': 'yes', 'type': 'ask'}
+                        asks.append(OrderBookEntry(price=price, quantity=quantity, metadata=metadata))
                     elif isinstance(ask, dict):
                         price = float(ask.get('price', ask.get('yes_price', 0)))
                         quantity = float(ask.get('quantity', ask.get('size', 0)))
-                        asks.append(OrderBookEntry(price=price, quantity=quantity, metadata=ask))
+                        # Add side/type metadata, preserving original dict
+                        metadata = dict(ask)
+                        metadata.update({'side': 'yes', 'type': 'ask'})
+                        asks.append(OrderBookEntry(price=price, quantity=quantity, metadata=metadata))
             
             # Handle no side (inverted prices: no_price = 1 - yes_price)
             if isinstance(no_data, list):
@@ -775,12 +785,17 @@ class KalshiClient(ExchangeClient):
                         no_price = no_price_cents / 100.0 if no_price_cents > 1 else no_price_cents
                         yes_price = 1.0 - no_price
                         quantity = float(bid[1])
-                        asks.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata={'raw': bid, 'no_price': no_price}))
+                        # Add side/type metadata for conversion logic
+                        metadata = {'raw': bid, 'side': 'no', 'type': 'bid', 'no_price': no_price}
+                        asks.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata=metadata))
                     elif isinstance(bid, dict):
                         no_price = float(bid.get('price', bid.get('no_price', 0)))
                         yes_price = 1.0 - no_price
                         quantity = float(bid.get('quantity', bid.get('size', 0)))
-                        asks.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata=bid))
+                        # Add side/type metadata, preserving original dict
+                        metadata = dict(bid)
+                        metadata.update({'side': 'no', 'type': 'bid', 'no_price': no_price})
+                        asks.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata=metadata))
                 
                 for ask in no_asks:
                     if isinstance(ask, (list, tuple)) and len(ask) >= 2:
@@ -788,26 +803,39 @@ class KalshiClient(ExchangeClient):
                         no_price = no_price_cents / 100.0 if no_price_cents > 1 else no_price_cents
                         yes_price = 1.0 - no_price
                         quantity = float(ask[1])
-                        bids.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata={'raw': ask, 'no_price': no_price}))
+                        # Add side/type metadata for conversion logic
+                        metadata = {'raw': ask, 'side': 'no', 'type': 'ask', 'no_price': no_price}
+                        bids.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata=metadata))
                     elif isinstance(ask, dict):
                         no_price = float(ask.get('price', ask.get('no_price', 0)))
                         yes_price = 1.0 - no_price
                         quantity = float(ask.get('quantity', ask.get('size', 0)))
-                        bids.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata=ask))
+                        # Add side/type metadata, preserving original dict
+                        metadata = dict(ask)
+                        metadata.update({'side': 'no', 'type': 'ask', 'no_price': no_price})
+                        bids.append(OrderBookEntry(price=yes_price, quantity=quantity, metadata=metadata))
         else:
-            # Standard bids/asks structure
+            # Standard bids/asks structure (no yes/no structure)
+            # For binary markets, we'll infer YES structure in the conversion logic
+            # But we should still add metadata to help with conversion
             raw_bids = data.get('bids', [])
             raw_asks = data.get('asks', [])
             
             for bid in raw_bids:
                 price = float(bid.get('price', 0))
                 quantity = float(bid.get('quantity', bid.get('size', 0)))
-                bids.append(OrderBookEntry(price=price, quantity=quantity, metadata=bid))
+                # For standard structure, assume bids are YES bids (will be handled by fallback in conversion)
+                metadata = dict(bid) if isinstance(bid, dict) else {'raw': bid}
+                # Don't add side/type here - let the conversion fallback handle it
+                bids.append(OrderBookEntry(price=price, quantity=quantity, metadata=metadata))
             
             for ask in raw_asks:
                 price = float(ask.get('price', 0))
                 quantity = float(ask.get('quantity', ask.get('size', 0)))
-                asks.append(OrderBookEntry(price=price, quantity=quantity, metadata=ask))
+                # For standard structure, assume asks are YES asks (will be handled by fallback in conversion)
+                metadata = dict(ask) if isinstance(ask, dict) else {'raw': ask}
+                # Don't add side/type here - let the conversion fallback handle it
+                asks.append(OrderBookEntry(price=price, quantity=quantity, metadata=metadata))
         
         # Sort bids descending (best bid first) and asks ascending (best ask first)
         bids.sort(key=lambda x: x.price, reverse=True)
@@ -1082,7 +1110,8 @@ class KalshiClient(ExchangeClient):
                     logger.debug(f"Subscription confirmed: {data}")
                 elif msg_type == "orderbook_snapshot":
                     # Full orderbook snapshot
-                    ticker = data.get("data", {}).get("market_ticker")
+                    # Kalshi uses 'msg' field, not 'data'
+                    ticker = data.get("msg", {}).get("market_ticker") or data.get("data", {}).get("market_ticker")
                     if ticker and ticker in self._ws_subscriptions:
                         try:
                             orderbook = self._parse_websocket_orderbook(data)
@@ -1096,7 +1125,8 @@ class KalshiClient(ExchangeClient):
                             logger.error(f"Error processing orderbook snapshot for {ticker}: {e}", exc_info=True)
                 elif msg_type == "orderbook_delta":
                     # Incremental orderbook update
-                    ticker = data.get("data", {}).get("market_ticker")
+                    # Kalshi uses 'msg' field, not 'data'
+                    ticker = data.get("msg", {}).get("market_ticker") or data.get("data", {}).get("market_ticker")
                     if ticker and ticker in self._ws_subscriptions:
                         try:
                             orderbook = self._parse_websocket_orderbook(data)
@@ -1235,18 +1265,18 @@ class KalshiClient(ExchangeClient):
         According to docs: https://docs.kalshi.com/getting_started/quick_start_websockets
         
         Args:
-            data: Raw websocket message data with structure: {"type": "...", "data": {...}}
+            data: Raw websocket message data with structure: {"type": "...", "msg": {...}} or {"type": "...", "data": {...}}
         
         Returns:
             OrderBook instance.
         """
-        # Extract data from message structure
-        msg_data = data.get("data", data)
+        # Extract data from message structure - Kalshi uses "msg" field, fallback to "data"
+        msg_data = data.get("msg") or data.get("data") or data
         ticker = msg_data.get("market_ticker", "")
         msg_type = data.get("type")
         
-        # For orderbook_snapshot and orderbook_delta, the orderbook data is in the "data" field
-        # Use the data field directly for normalization
+        # For orderbook_snapshot and orderbook_delta, the orderbook data is in the "msg" field
+        # Use the msg field directly for normalization
         orderbook_data = msg_data
         
         # Use existing normalization logic
