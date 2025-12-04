@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type { User } from "@supabase/supabase-js";
-import { Search, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChatButton } from "@/components/ChatButton";
 import { ChatSidebar } from "@/components/ChatSidebar";
@@ -78,7 +77,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col" style={{ overscrollBehavior: 'none' }}>
       <header className="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur sticky top-0 z-20">
         <div className={cn(
           "flex flex-1 flex-col px-6 py-4 transition-all duration-300",
@@ -87,9 +86,6 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
           <div className="mx-auto flex w-full max-w-7xl items-center justify-between">
             {/* Left: Logo and Title */}
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10">
-                <TrendingUp className="h-5 w-5 text-emerald-400" />
-              </div>
               <h1 className="text-lg font-semibold tracking-tight">
                 Arbitrage Dashboard
               </h1>
