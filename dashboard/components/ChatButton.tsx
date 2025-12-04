@@ -1,34 +1,23 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { MessageCircle, X, Sparkles } from "lucide-react";
-import { ChatModal } from "./ChatModal";
-import { MarketPair } from "@/types/api";
+import { useEffect, useCallback } from "react";
+import { Sparkles } from "lucide-react";
+import { useChat } from "@/contexts/ChatContext";
 
-export function ChatButton() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [marketPairs, setMarketPairs] = useState<MarketPair[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+interface ChatButtonProps {
+  className?: string;
+}
 
-  // Fetch market pairs when chat opens
-  useEffect(() => {
-    if (isOpen && marketPairs.length === 0) {
-      setIsLoading(true);
-      fetch("http://localhost:8000/api/get_paired_markets")
-        .then((res) => res.json())
-        .then((data) => setMarketPairs(data))
-        .catch((err) => console.error("Failed to fetch market pairs:", err))
-        .finally(() => setIsLoading(false));
-    }
-  }, [isOpen, marketPairs.length]);
+export function ChatButton({ className }: ChatButtonProps) {
+  const { isOpen, setIsOpen } = useChat();
 
   // Keyboard shortcut: Cmd/Ctrl + K to toggle chat
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "k") {
       e.preventDefault();
-      setIsOpen((prev) => !prev);
+      setIsOpen(!isOpen);
     }
-  }, []);
+  }, [isOpen, setIsOpen]);
 
   useEffect(() => {
     document.addEventListener("keydown", handleKeyDown);
@@ -36,35 +25,16 @@ export function ChatButton() {
   }, [handleKeyDown]);
 
   return (
-    <>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 rounded-full px-4 py-3 text-white shadow-lg transition-all duration-300 ${
-          isOpen
-            ? "bg-zinc-700 hover:bg-zinc-600"
-            : "bg-emerald-600 hover:bg-emerald-500 hover:shadow-xl hover:scale-105"
-        }`}
-      >
-        {isOpen ? (
-          <>
-            <X className="h-5 w-5" />
-            <span className="text-sm font-medium">Close</span>
-          </>
-        ) : (
-          <>
-            <Sparkles className="h-5 w-5" />
-            <span className="text-sm font-medium">AI Assistant</span>
-            <kbd className="hidden sm:inline-flex items-center gap-1 rounded bg-emerald-700/50 px-1.5 py-0.5 text-[10px] font-medium">
-              <span className="text-[10px]">⌘</span>K
-            </kbd>
-          </>
-        )}
-      </button>
-      <ChatModal
-        isOpen={isOpen}
-        onClose={() => setIsOpen(false)}
-        marketPairs={marketPairs}
-      />
-    </>
+    <button
+      onClick={() => setIsOpen(!isOpen)}
+      className={`flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-300 transition-colors hover:bg-zinc-700 hover:text-white ${className || ""}`}
+      title="Open AI Assistant (⌘K)"
+    >
+      <Sparkles className="h-4 w-4 text-emerald-400" />
+      <span className="hidden sm:inline">AI Assistant</span>
+      <kbd className="hidden md:inline-flex items-center gap-1 rounded bg-zinc-700/50 px-1.5 py-0.5 text-[10px] font-medium text-zinc-400">
+        <span className="text-[10px]">⌘</span>K
+      </kbd>
+    </button>
   );
 }
