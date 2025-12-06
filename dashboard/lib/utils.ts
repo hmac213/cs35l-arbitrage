@@ -1,11 +1,30 @@
+/**
+ * Utility functions for the Arbitrage Dashboard frontend.
+ * @module lib/utils
+ */
+
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 import { ArbitrageOpportunity } from "@/types/api";
 
+/**
+ * Merge Tailwind CSS classes with conflict resolution.
+ * Combines clsx for conditional classes with tailwind-merge for deduplication.
+ *
+ * @param inputs - Class values to merge (strings, objects, arrays)
+ * @returns Merged class string with conflicts resolved
+ * @example cn("px-2 py-1", isActive && "bg-blue-500", "px-4") // "py-1 bg-blue-500 px-4"
+ */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Format an ISO 8601 timestamp for display.
+ *
+ * @param value - ISO timestamp string or null
+ * @returns Formatted date string (e.g., "Dec 05, 2025, 07:30 PM") or "N/A" if null
+ */
 export function formatDateTime(value: string | null): string {
   if (!value) return "N/A";
   const date = new Date(value);
@@ -19,6 +38,12 @@ export function formatDateTime(value: string | null): string {
   });
 }
 
+/**
+ * Format a number as USD currency.
+ *
+ * @param amount - Numeric amount
+ * @returns Formatted currency string (e.g., "$1,234.56")
+ */
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -28,6 +53,12 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+/**
+ * Format a number as a percentage string.
+ *
+ * @param value - Numeric value (already multiplied by 100)
+ * @returns Formatted percentage string (e.g., "12.34%")
+ */
 export function formatPercentage(value: number): string {
   return `${value.toFixed(2)}%`;
 }

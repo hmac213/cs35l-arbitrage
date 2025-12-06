@@ -1,3 +1,13 @@
+/**
+ * MarketPairCard - Displays a single market pair with arbitrage opportunity details.
+ *
+ * This component renders a card showing:
+ * - Market name (from Polymarket, as it typically has better names)
+ * - Live arbitrage badge indicating if opportunity exists
+ * - Favorite toggle button
+ * - Detailed opportunity information (prices, direction, profit)
+ * - Budget-based profit projections if user has set a budget
+ */
 "use client";
 
 import { Heart } from "lucide-react";
@@ -5,13 +15,21 @@ import { MarketPair } from "@/types/api";
 import { cn, formatDateTime, calculateProfitWithBudget, formatCurrency, formatPercentage } from "@/lib/utils";
 
 interface MarketPairCardProps {
+  /** The market pair data to display */
   pair: MarketPair;
+  /** Callback when card is clicked (opens detail modal) */
   onClick: () => void;
+  /** User's budget for profit calculations, null if not set */
   budget: number | null;
+  /** Whether this pair is in user's favorites */
   isFavorite: boolean;
+  /** Callback to toggle favorite status */
   onToggleFavorite: () => void;
 }
 
+/**
+ * Badge component showing whether a live arbitrage opportunity exists.
+ */
 function OpportunityBadge({ pair }: { pair: MarketPair }) {
   const hasCurrent = !!pair.current_opportunity;
   return (
@@ -28,25 +46,32 @@ function OpportunityBadge({ pair }: { pair: MarketPair }) {
   );
 }
 
+/**
+ * Convert internal direction string to human-readable format.
+ *
+ * @param direction - Internal format like "yes_kalshi_no_polymarket"
+ * @returns Human-readable string like "Buy YES on Kalshi, NO on Polymarket"
+ */
 function formatDirection(direction: string): string {
-  // Parse direction like "yes_kalshi_no_polymarket" or "yes_polymarket_no_kalshi"
   const parts = direction.split("_");
   if (parts.length >= 4 && parts[0] === "yes" && parts[2] === "no") {
     const yesExchange = parts[1];
     const noExchange = parts[3];
-    
-    // Capitalize exchange names properly
+
     const capitalizeExchange = (exchange: string): string => {
       return exchange.charAt(0).toUpperCase() + exchange.slice(1);
     };
-    
+
     return `Buy YES on ${capitalizeExchange(yesExchange)}, NO on ${capitalizeExchange(noExchange)}`;
   }
-  
-  // Fallback for unexpected formats
+
   return direction;
 }
 
+/**
+ * Detailed view of the arbitrage opportunity including prices, direction,
+ * profit per share, and budget-based calculations if a budget is set.
+ */
 function OpportunityDetails({
   pair,
   budget,
