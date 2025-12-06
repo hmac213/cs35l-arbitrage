@@ -5,6 +5,7 @@ A full-stack application for identifying and visualizing arbitrage opportunities
 ## Table of Contents
 
 - [Architecture Overview](#architecture-overview)
+- [Diagrams](#diagrams)
 - [Prerequisites](#prerequisites)
 - [Environment Setup](#environment-setup)
 - [Database Setup](#database-setup)
@@ -24,7 +25,6 @@ The application consists of three main components:
 3. **Frontend Dashboard** (Next.js): React-based UI for visualizing opportunities
 
 ### Data Flow
-
 ```
 Exchange APIs (Kalshi/Polymarket)
 
@@ -36,6 +36,11 @@ Market Pairs → Orderbook Poller → Arbitrage Calculator
 
 WebSocket Stream → Frontend Dashboard
 ```
+
+## Diagrams
+
+### Component Architecture
+![Component Diagram](component-diagram.png)
 
 ## Prerequisites
 
