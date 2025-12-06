@@ -43,7 +43,7 @@ WebSocket Stream → Frontend Dashboard
 ![Component Diagram](component-diagram.png)
 
 ### System Sequence Diagram
-![Sequence Diagram](diagrams/sequence.png)
+![Sequence Diagram](sequence.png)
 
 ## Prerequisites
 
