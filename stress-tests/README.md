@@ -84,17 +84,32 @@ npm run test:api
 npm run test:all
 ```
 
-### Generate HTML Reports
+### View Reports via Artillery Cloud
+
+To access detailed reports online, connect to Artillery Cloud:
 
 ```bash
-# WebSocket test with HTML report
-npm run test:ws:report
+# Login to Artillery Cloud (one-time setup)
+npx artillery login
 
-# API test with HTML report
-npm run test:api:report
+# Run tests with cloud reporting
+npm run test:api:cloud
+npm run test:ws:cloud
 ```
 
-Reports are saved to `reports/` directory.
+After running tests, you'll receive a URL to view the report on [Artillery Cloud](https://app.artillery.io/).
+
+### Test Results (December 4, 2025)
+
+Results from WebSocket load test run on MacBook Pro:
+
+**Load Summary** - 1,150 virtual users created, 385 completed (33.48%), 765 failed (66.52%) during stress/spike phases:
+
+![Load Summary](reports/load-summary.png)
+
+**Errors Chart** - ETIMEDOUT errors peaked during stress test phase (~250 errors), indicating connection limits were reached:
+
+![Errors Chart](reports/errors-chart.png)
 
 ## Understanding the Results
 

@@ -13,7 +13,7 @@ A full-stack application for identifying and visualizing arbitrage opportunities
 - [Running the Application](#running-the-application)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
-- [Troubleshooting](#troubleshooting)
+- [Additional Documentation](#additional-documentation)
 
 ## Architecture Overview
 
@@ -27,13 +27,13 @@ The application consists of three main components:
 
 ```
 Exchange APIs (Kalshi/Polymarket)
-    ↓
+
 Market Poller → Supabase Database
-    ↓
+
 Market Similarity Service (Vector Embeddings + LLM Verification)
-    ↓
+
 Market Pairs → Orderbook Poller → Arbitrage Calculator
-    ↓
+
 WebSocket Stream → Frontend Dashboard
 ```
 
@@ -54,7 +54,7 @@ Before setting up the project, ensure you have:
 
 ```bash
 git clone <repository-url>
-cd Arbitrage
+cd cs35l-arbitrage
 ```
 
 ### 2. Create Environment Files
@@ -65,6 +65,7 @@ Create a `.env` file in the project root with the following variables:
 # Supabase Configuration (REQUIRED)
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-service-role-key-here
+SUPABASE_ANON_KEY=your-anon-key-here  # Used by frontend for auth
 
 # OpenAI Configuration (REQUIRED for market matching)
 OPENAI_API_KEY=sk-your-openai-api-key-here
@@ -89,21 +90,6 @@ SIMILARITY_THRESHOLD=0.8
 # Optional: CORS Configuration (for API server)
 CORS_ORIGINS=http://localhost:3000,http://localhost:3001
 ```
-
-### 3. Frontend Environment Variables
-
-Create a `.env.local` file in the `dashboard/` directory:
-
-```bash
-# Backend API URL
-NEXT_PUBLIC_API_URL=http://localhost:8000
-
-# Supabase Configuration (for authentication)
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
-```
-
-**Note:** The Supabase anon key is different from the service role key. Find it in your Supabase project settings under "API" → "Project API keys".
 
 ## Database Setup
 
@@ -135,7 +121,7 @@ Then paste the contents into Supabase SQL Editor and execute.
 
 ```bash
 # Activate virtual environment first (see Backend Setup)
-python -m db.utils apply_migrations
+python -m db.utils apply
 ```
 
 ### 3. Verify Database Setup
@@ -315,7 +301,7 @@ npm run test:e2e
 ## Project Structure
 
 ```
-Arbitrage/
+cs35l-arbitrage/
 ├── api/                    # FastAPI application
 │   ├── endpoints/          # API route handlers
 │   └── main.py            # FastAPI app entry point
@@ -335,12 +321,22 @@ Arbitrage/
 ├── services/               # Background services
 │   └── main.py            # Service orchestration
 ├── db/                     # Database client and models
+│   └── utils.py           # Migration utilities (python -m db.utils apply)
 ├── vector_db/              # Vector embedding operations
 ├── supabase/
-│   └── migrations/        # Database migration files
+│   └── migrations/        # Database migration files (001-019)
+├── stress-tests/           # Artillery load testing
 ├── requirements.txt       # Python dependencies
+├── run_api.sh             # Script to start API server
+├── run_services.sh        # Script to start backend services
 └── .env                   # Environment variables (create this)
 ```
+
+## Additional Documentation
+
+- **[Dashboard README](dashboard/README.md)** - Frontend setup, API documentation, and UI component details
+- **[Dashboard Tests README](dashboard/tests/README.md)** - Frontend test coverage and testing guide
+- **[Stress Tests README](stress-tests/README.md)** - Artillery load testing configuration and usage
 
 ## Troubleshooting
 
@@ -371,11 +367,11 @@ pip install -r requirements.txt
 
 **Problem: `Cannot connect to backend`**
 - Verify API server is running: http://localhost:8000/health
-- Check `NEXT_PUBLIC_API_URL` in `dashboard/.env.local`
+- The API URL defaults to `http://localhost:8000` (configured in `dashboard/next.config.ts`)
 - Ensure CORS is configured correctly in `api/main.py`
 
 **Problem: `Supabase auth error`**
-- Verify `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `dashboard/.env.local`
+- Verify `SUPABASE_URL` and `SUPABASE_ANON_KEY` in `.env`
 - Ensure you're using the **anon key**, not the service role key
 - Check Supabase project settings → API → Project API keys
 
@@ -413,22 +409,6 @@ PORT=3001 npm run dev
 - Use cheaper embedding model: `EMBEDDING_MODEL=text-embedding-ada-002`
 - Increase polling intervals to reduce API calls
 
-## Additional Resources
-
-- **API Documentation:** See `dashboard/README.md` for frontend API details
-- **Supabase Docs:** [supabase.com/docs](https://supabase.com/docs)
-- **FastAPI Docs:** [fastapi.tiangolo.com](https://fastapi.tiangolo.com)
-- **Next.js Docs:** [nextjs.org/docs](https://nextjs.org/docs)
-
-## Support
-
-For issues or questions:
-1. Check the [Troubleshooting](#troubleshooting) section
-2. Review logs from backend services (check terminal output)
-3. Verify all environment variables are set correctly
-4. Ensure all three services (backend, API, frontend) are running
-
 ---
 
-**Last Updated:** 2024
 

@@ -1,6 +1,6 @@
 # Dashboard Frontend
 
-Next.js dashboard for visualizing arbitrage opportunities.
+Next.js 16 dashboard for visualizing arbitrage opportunities between Kalshi and Polymarket prediction markets.
 
 ## Quick Start
 
@@ -9,27 +9,25 @@ Next.js dashboard for visualizing arbitrage opportunities.
 npm install
 ```
 
-2. Set environment variables:
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-3. Run development server:
+2. Run development server:
 ```bash
 npm run dev
 ```
 
+3. Open http://localhost:3000 in your browser
+
+**Note:** The dashboard reads environment variables from the root `.env` file (via `next.config.ts`). No separate `.env` file is needed in this directory. The API URL defaults to `http://localhost:8000`. See the main [README.md](../README.md) for complete setup instructions.
+
 ## API Documentation
 
-**For frontend developers:** See the comprehensive API documentation at **[../API_DOCUMENTATION.md](../API_DOCUMENTATION.md)**.
+The backend API is documented via FastAPI's built-in OpenAPI/Swagger UI:
+- **Swagger UI:** http://localhost:8000/docs (when API server is running)
+- **ReDoc:** http://localhost:8000/redoc
 
-This includes:
-- Complete endpoint reference
-- Request/response schemas
-- Field descriptions and data types
-- Example code snippets
-- Error handling
-- Important notes about null values and data formats
+Key endpoints:
+- `GET /api/get_paired_markets` - Fetch all paired markets with arbitrage opportunities
+- `GET /health` - API health check
+- `WS /ws/market_pairs` - WebSocket for real-time market updates
 
 ## Project Structure
 
@@ -46,6 +44,26 @@ Proxies requests to the Python backend API. The route:
 - Fetches data from `NEXT_PUBLIC_API_URL/api/get_paired_markets`
 - Caches responses for 30 seconds
 - Returns the same data structure as the backend
+
+## Testing
+
+### Unit & Integration Tests (Jest)
+```bash
+npm test                # Run all tests
+npm run test:watch      # Watch mode for development
+npm run test:coverage   # Run with coverage report
+```
+
+### End-to-End Tests (Playwright)
+```bash
+# Install Playwright browsers first (one-time setup)
+npx playwright install
+
+# Run E2E tests (requires frontend running on localhost:3000)
+npm run test:e2e
+```
+
+See `tests/README.md` for more details on test coverage.
 
 ## shadcn/ui
 
