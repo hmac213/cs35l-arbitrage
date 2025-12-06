@@ -42,6 +42,9 @@ WebSocket Stream → Frontend Dashboard
 ### Component Architecture
 ![Component Diagram](component-diagram.png)
 
+### System Sequence Diagram
+![Sequence Diagram](diagrams/sequence.png)
+
 ## Prerequisites
 
 Before setting up the project, ensure you have:
